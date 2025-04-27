@@ -1,6 +1,7 @@
 # Gemini Movie Analyzer
 
-Google Gemini API を使用して MP4 動画ファイルを分析するための Windows デスクトップツールです。
+議事録君が遅くてだるいので文字起こししなくていい場合はこっちで簡易に議事録まとめを作れるようにした。  
+ただのgemini動画解析ラッパーなのでplaygroundが使える環境であれば不要。
 
 ## 主な機能
 
