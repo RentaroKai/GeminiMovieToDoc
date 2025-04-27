@@ -1,0 +1,155 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+# *.manifest
+# *.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*.*.*.*.*
+.cache
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# IDEs
+.idea/
+.vscode/
+
+# Application Specific
+logs/
+output/
+config/config.json # APIキーなど機密情報を含む可能性があるため
+*.log
+
+# Windows thumbnail cache files
+Thumbs.db
+ehthumbs.db
+
+# DS_Store for macOS
+.DS_Store
+
+# 環境変数・APIキー
+.env
+
+# 出力ファイル
+/output/
+/output/*
+
+# ログファイル (ディレクトリ自体は保持)
+/logs/*
+!/logs/.gitkeep
+
+# Python キャッシュファイル
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 仮想環境
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE・エディタ設定
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS固有
+.DS_Store
+Thumbs.db 
+
+config/settings.json
+
+ouput
+
+docs
+
+sample
+
+tests_data
+tests
+
+
+*.json
+仕様.md
+推奨.md
+詳細仕様.md
+.cursor/rules/apikey.mdc
+.cursor/rules/googlegenai.mdc

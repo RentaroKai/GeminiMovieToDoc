@@ -1,0 +1,14 @@
+# 利用可能な Gemini モデル
+# models.yaml はアプリケーションが読み込むモデル名と、その説明（任意）を管理します。
+# 実際のモデル名は Google AI Studio などで確認してください。
+
+
+# Example models - replace with actual available models
+models:
+  - name: "gemini-2.5-flash-preview-04-17"
+    description: "Fast and versatile model for most tasks"
+  - name: "gemini-2.5-pro-exp-03-25"
+    description: "Most capable model for complex tasks"
+# You can add more models here following the same format
+# - name: "other-model-name"
+#   description: "Description of the other model" 
