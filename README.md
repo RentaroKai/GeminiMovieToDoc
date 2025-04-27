@@ -2,6 +2,10 @@
 
 A Windows desktop tool to analyze MP4 videos using the Google Gemini API.
 
+## build
+
+pyinstaller --onefile --noconsole run_app.py
+
 ## Features (Planned)
 
 *   Drag & drop MP4 files.
