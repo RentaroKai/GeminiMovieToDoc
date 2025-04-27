@@ -149,6 +149,9 @@ class MainWindow(QMainWindow):
         # アプリケーション設定の読み込み
         self.settings = load_settings()
         
+        # 実際のAPIキーを内部で保持（UIのマスク表示と分離）
+        self._actual_api_key = self.settings.gemini.api_key or ""
+        
         # UIの初期化
         self.init_ui()
         
@@ -247,13 +250,15 @@ class MainWindow(QMainWindow):
         api_key_layout.addWidget(QLabel("Gemini API キー:"))
         self.api_key_input = QLineEdit()
         self.api_key_input.setPlaceholderText("環境変数 GEMINI_API_KEY または GOOGLE_API_KEY から自動取得")
-        if self.settings.gemini.api_key:
+        if self._actual_api_key:
             # APIキーが存在する場合、マスキングして表示
-            self.api_key_input.setText("*" * len(self.settings.gemini.api_key) if len(self.settings.gemini.api_key) > 0 else "")
+            self.api_key_input.setText("*" * len(self._actual_api_key) if len(self._actual_api_key) > 0 else "")
             self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password) # 入力時も隠す
         else:
             # APIキーが存在しない場合、通常表示
             self.api_key_input.setEchoMode(QLineEdit.EchoMode.Normal)
+        # テキスト変更時の処理を追加
+        self.api_key_input.textChanged.connect(self._on_api_key_changed)
         api_key_layout.addWidget(self.api_key_input)
         api_settings_layout.addLayout(api_key_layout, 2)
         
@@ -399,6 +404,15 @@ class MainWindow(QMainWindow):
         # メインウィジェットを設定
         self.setCentralWidget(main_widget)
     
+    def _on_api_key_changed(self):
+        """APIキー入力欄が変更されたときの処理"""
+        # ユーザーが入力したテキストを取得
+        text = self.api_key_input.text()
+        
+        # 現在のテキストがマスク（*のみ）でない場合は、実際のAPIキーを更新
+        if text and not all(c == '*' for c in text):
+            self._actual_api_key = text
+    
     def connect_worker_signals(self):
         """ワーカースレッドのシグナルを接続"""
         self.worker.progress_update.connect(self.on_progress_update)
@@ -498,7 +512,8 @@ class MainWindow(QMainWindow):
                 return
             
             # API関連設定
-            self.settings.gemini.api_key = self.api_key_input.text()
+            # マスク文字列ではなく実際のAPIキーを保存
+            self.settings.gemini.api_key = self._actual_api_key
             self.settings.gemini.model_name = self.model_combo.currentText()
             self.settings.gemini.mode = self.mode_combo.currentData()
             self.settings.gemini.stream_response = self.streaming_check.isChecked()
@@ -532,8 +547,8 @@ class MainWindow(QMainWindow):
         # 最初のファイルを使用
         video_path = self.video_files[0]
         
-        # APIキー取得
-        api_key = self.api_key_input.text()
+        # APIキー取得 - マスク文字列ではなく実際のAPIキーを使用
+        api_key = self._actual_api_key
         
         # モデル名取得
         model_name = self.model_combo.currentText()
@@ -652,7 +667,8 @@ class MainWindow(QMainWindow):
             # プロンプトを保存
             self.settings.ui.last_prompt = self.prompt_edit.toPlainText()
             
-            # API関連設定
+            # API関連設定 - マスク文字列ではなく実際のAPIキーを保存
+            self.settings.gemini.api_key = self._actual_api_key
             self.settings.gemini.model_name = self.model_combo.currentText()
             self.settings.gemini.mode = self.mode_combo.currentData()
             self.settings.gemini.stream_response = self.streaming_check.isChecked()
