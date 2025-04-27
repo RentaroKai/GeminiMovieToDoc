@@ -6,15 +6,17 @@ QThread を使用して UI スレッドとは別のスレッドで Gemini API �
 
 import os
 import sys
+import datetime
 from pathlib import Path
 from typing import Optional, Union, Dict, Any, List, Generator
 
 from PySide6.QtCore import QThread, Signal, QObject
 
 from src.utils.logger import app_logger as logger
-from src.utils.file_ops import check_file_size, get_output_filename, save_text_output
+from src.utils.file_ops import check_file_size, save_text_output, sanitize_filename, default_output_filename
 from src.config.settings import settings
 from src.backend.gemini_client import GeminiClient
+from src.backend.title_generator import request_title
 
 
 class GeminiWorker(QThread):
@@ -100,11 +102,13 @@ class GeminiWorker(QThread):
             
         self.max_file_size_mb = max_file_size_mb or settings.file.max_file_size_mb
         
-        # 結果テキストをクリア
+        # 結果テキストと出力ファイルをクリア
         self._result_text = ""
+        self._output_file = None
     
     def run(self) -> None:
         """QThreadで実行される処理"""
+        self._output_file = None # 実行開始時にも念のためクリア
         try:
             # 状態更新
             self.status_update.emit("処理を開始しています...")
@@ -118,8 +122,9 @@ class GeminiWorker(QThread):
             if not check_file_size(self.video_path, self.max_file_size_mb):
                 raise ValueError(f"ファイルサイズが上限（{self.max_file_size_mb}MB）を超えています")
             
-            # 出力ファイル名生成
-            self._output_file = get_output_filename(self.video_path, self.output_dir)
+            # 出力ディレクトリ確保 (Pathオブジェクトであることを保証)
+            self.output_dir = Path(self.output_dir) # configureで設定済みだが念のため
+            self.output_dir.mkdir(parents=True, exist_ok=True) # なければ作成
             
             # 状態更新
             self.status_update.emit("Gemini APIに接続しています...")
@@ -140,11 +145,52 @@ class GeminiWorker(QThread):
                 # 非ストリーミングモード
                 self._process_non_streaming()
             
+            # ---- ここからタイトル生成とファイル名決定 ----
+            self.status_update.emit("ファイル名を生成しています...")
+            self.progress_update.emit(85) # 進捗を調整
+            
+            generated_title = None
+            if self._result_text: # 解析結果がある場合のみタイトル生成試行
+                try:
+                    # request_title は失敗時に None を返す想定
+                    generated_title = request_title(self._result_text, self._client)
+                except Exception as title_e:
+                    # タイトル生成中の予期せぬエラー
+                    logger.error(f"タイトル生成中にエラーが発生: {title_e}", exc_info=True)
+                    # generated_title は None のまま
+            
+            # 出力ファイルの拡張子 (仮に.mdとする。必要なら設定等から取得)
+            output_ext = ".md"
+            
+            if generated_title:
+                safe_title = sanitize_filename(generated_title)
+                # 日付 + タイトル + 拡張子
+                filename = f"{datetime.datetime.now():%Y%m%d}_{safe_title}{output_ext}"
+                self._output_file = self.output_dir / filename
+                # ファイル名の衝突チェック (連番付与)
+                counter = 1
+                original_stem = self._output_file.stem
+                while self._output_file.exists():
+                    self._output_file = self.output_dir / f"{original_stem}_{counter}{output_ext}"
+                    counter += 1
+                logger.info(f"生成されたタイトルに基づくファイル名: {self._output_file.name}")
+            else:
+                # タイトル生成失敗 or 解析結果なしの場合、デフォルト名を使用
+                logger.warning("タイトル生成に失敗したか、解析結果が空のため、デフォルトファイル名を使用します。")
+                self._output_file = default_output_filename(self.output_dir, output_ext)
+                logger.info(f"デフォルトファイル名を使用: {self._output_file.name}")
+            
+            # ---- ここまで ----
+            
             # 状態更新
             self.status_update.emit("結果を保存しています...")
-            self.progress_update.emit(90)
+            self.progress_update.emit(90) # 進捗を調整
             
             # 結果保存
+            if not self._output_file:
+                 # 通常ここには来ないはずだが、念のため
+                 raise RuntimeError("出力ファイルパスが決定されていません。")
+
             saved = save_text_output(self._result_text, self._output_file, self.use_bom)
             if not saved:
                 raise IOError(f"結果の保存に失敗しました: {self._output_file}")
@@ -152,12 +198,12 @@ class GeminiWorker(QThread):
             # 完了シグナル発行
             self.status_update.emit("処理が完了しました")
             self.progress_update.emit(100)
-            self.complete.emit(str(self._output_file))
+            self.complete.emit(str(self._output_file)) # 保存した実際のパスを通知
         
         except Exception as e:
             # エラー処理
             error_msg = f"処理中にエラーが発生しました: {e}"
-            logger.error(error_msg)
+            logger.error(error_msg, exc_info=True) # トレースバックもログに記録
             self.error.emit(error_msg)
             self.status_update.emit("エラーが発生しました")
             self.progress_update.emit(0)
@@ -166,9 +212,11 @@ class GeminiWorker(QThread):
             # クリーンアップ
             if self._client:
                 try:
+                    # アップロードした動画ファイルと、タイトル生成に使ったファイルの参照を削除
                     self._client.cleanup_files()
-                except Exception as e:
-                    logger.warning(f"クリーンアップ中にエラー: {e}")
+                    logger.info("GeminiClientのファイル参照をクリーンアップしました。")
+                except Exception as clean_e:
+                    logger.warning(f"クリーンアップ中にエラー: {clean_e}")
     
     def _process_streaming(self) -> None:
         """ストリーミングモードでの処理"""

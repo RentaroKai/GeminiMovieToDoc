@@ -7,6 +7,7 @@
 import os
 import datetime
 import codecs
+import re
 from pathlib import Path
 from typing import Optional, Union, BinaryIO
 
@@ -47,6 +48,51 @@ def check_file_size(file_path: Union[str, Path], max_size_mb: int = 100) -> bool
     except Exception as e:
         logger.error(f"ファイルサイズチェック中にエラー: {e}")
         return False
+
+
+def sanitize_filename(name: str) -> str:
+    """
+    ファイル名として不適切な文字を置換し、整形する。
+
+    Args:
+        name: 整形前のファイル名候補
+
+    Returns:
+        str: 整形後のファイル名
+    """
+    # Windowsで禁止されている文字をアンダースコアに置換
+    name = re.sub(r'[\\/:*?"<>|]', '_', name)
+    # 先頭と末尾の空白文字を削除
+    name = name.strip()
+    # 連続するアンダースコアを1つにまとめる
+    name = re.sub(r'_+', '_', name)
+    # ファイル名の先頭や末尾がアンダースコアなら削除
+    name = name.strip('_')
+    # 空になった場合はデフォルト名を返す
+    if not name:
+        name = "untitled"
+    return name
+
+
+def default_output_filename(output_dir: Path, ext: str = ".md") -> Path:
+    """
+    フォールバック用のデフォルト出力ファイル名を生成する。
+    衝突を避けるために連番を付与する。
+
+    Args:
+        output_dir: 出力ディレクトリ
+        ext: 拡張子 (例: ".md")
+
+    Returns:
+        Path: 生成されたデフォルトファイルパス
+    """
+    base_name = datetime.datetime.now().strftime("%Y%m%d") + "_analysis_result"
+    output_path = output_dir / f"{base_name}{ext}"
+    counter = 1
+    while output_path.exists():
+        output_path = output_dir / f"{base_name}_{counter}{ext}"
+        counter += 1
+    return output_path
 
 
 def get_output_filename(video_path: Union[str, Path], output_dir: Optional[Path] = None) -> Path:
