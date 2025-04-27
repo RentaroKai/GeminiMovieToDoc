@@ -7,6 +7,7 @@ QThread を使用して UI スレッドとは別のスレッドで Gemini API �
 import os
 import sys
 import datetime
+import time
 from pathlib import Path
 from typing import Optional, Union, Dict, Any, List, Generator
 
@@ -17,6 +18,7 @@ from src.utils.file_ops import check_file_size, save_text_output, sanitize_filen
 from src.config.settings import settings
 from src.backend.gemini_client import GeminiClient
 from src.backend.title_generator import request_title
+from src.utils.video_ops import compress_video_to_target
 
 
 class GeminiWorker(QThread):
@@ -119,8 +121,49 @@ class GeminiWorker(QThread):
                 raise ValueError("動画ファイルとプロンプトが設定されていません")
             
             # ファイルサイズチェック
-            if not check_file_size(self.video_path, self.max_file_size_mb):
-                raise ValueError(f"ファイルサイズが上限（{self.max_file_size_mb}MB）を超えています")
+            original_file_size_mb = Path(self.video_path).stat().st_size / (1024 * 1024)
+            
+            if original_file_size_mb > self.max_file_size_mb:
+                # 元のパスを保存
+                self._original_video_path = self.video_path
+                
+                self.status_update.emit("動画サイズ超過 → 自動圧縮を試みます...")
+                self.progress_update.emit(5) # 進捗を少し進める
+                try:
+                    # 圧縮関数呼び出し
+                    compressed_path = compress_video_to_target(
+                        self.video_path,
+                        self.max_file_size_mb,
+                        # logger=logger, # デフォルトで app_logger を使用
+                        progress_cb=lambda msg, pct: (
+                            self.status_update.emit(msg),
+                            self.progress_update.emit(pct))
+                    )
+
+                    # 圧縮結果のハンドリング
+                    if compressed_path is None:
+                        # FFmpeg が見つからなかった場合
+                        self.status_update.emit("警告: FFmpeg が見つからないため圧縮をスキップしました。")
+                        raise ValueError(f"ファイルサイズが上限（{self.max_file_size_mb}MB）を超えています（圧縮スキップ）。")
+                    elif compressed_path == Path(self.video_path):
+                        # サイズが既に条件を満たしていた場合 (通常ここには来ないはずだが念のため)
+                        pass # 何もしない
+                    else:
+                        # 圧縮成功 → パスを差し替え
+                        self.status_update.emit("動画の圧縮が完了しました。")
+                        self.video_path = str(compressed_path) # self.video_path を圧縮後のパスに更新
+
+                except RuntimeError as compress_err:
+                    # 圧縮処理自体が失敗した場合 (CRF上限到達など)
+                    self.status_update.emit(f"自動圧縮に失敗しました: {compress_err}")
+                    raise ValueError(
+                        f"ファイルサイズが上限（{self.max_file_size_mb}MB）を超えています（自動圧縮失敗）。\n"
+                        f"エラー詳細: {compress_err}"
+                    )
+                except Exception as e:
+                    # 予期せぬエラー
+                    self.status_update.emit(f"圧縮中に予期せぬエラーが発生しました: {e}")
+                    raise ValueError(f"ファイルサイズが上限（{self.max_file_size_mb}MB）を超えています（圧縮中エラー）。")
             
             # 出力ディレクトリ確保 (Pathオブジェクトであることを保証)
             self.output_dir = Path(self.output_dir) # configureで設定済みだが念のため
@@ -210,6 +253,16 @@ class GeminiWorker(QThread):
         
         finally:
             # クリーンアップ
+            # 圧縮一時ファイルの削除
+            try:
+                if hasattr(self, '_original_video_path') and self.video_path != self._original_video_path:
+                    temp_file = Path(self.video_path)
+                    if temp_file.exists() and temp_file.name.endswith('_compressed.mp4') or '_compressed_' in temp_file.name:
+                        logger.info(f"圧縮一時ファイルを削除します: {temp_file}")
+                        temp_file.unlink()
+            except Exception as temp_e:
+                logger.warning(f"圧縮一時ファイル削除中にエラー: {temp_e}")
+                
             if self._client:
                 try:
                     # アップロードした動画ファイルと、タイトル生成に使ったファイルの参照を削除

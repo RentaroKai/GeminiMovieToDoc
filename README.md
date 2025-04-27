@@ -1,70 +1,54 @@
 # Gemini Movie Analyzer
 
-A Windows desktop tool to analyze MP4 videos using the Google Gemini API.
+Google Gemini API を使用して MP4 動画ファイルを分析するための Windows デスクトップツールです。
 
-## build
+## 主な機能
 
-pyinstaller --onefile --noconsole run_app.py
+*   MP4 動画ファイルのドラッグ＆ドロップによる追加。
+*   カスタムプロンプトの入力、またはテンプレート（将来実装予定）を使用した分析。
+*   使用する Gemini モデルの選択 (`APP_Manager.json` で設定)。
+*   Gemini API を介した動画分析 (ファイルアップロードとコンテンツ生成)。
+    *   **自動動画圧縮:** アップロードする動画ファイルがAPIの最大サイズ制限を超えている場合、システムに `ffmpeg` へのパスが通っていれば、自動的に動画の圧縮を試みます。(圧縮設定は `config/settings.json` で調整可能です。)
+*   分析結果を `output/` ディレクトリにテキストファイルとして保存。
+*   設定管理 (`APP_Manager.json`): APIキー（環境変数優先）、最後に使用したモデル、プロンプト履歴などを管理。
+*   ログの記録 (`logs/` ディレクトリ): アプリケーションの動作ログを記録。
 
-## Features (Planned)
+## セットアップ
 
-*   Drag & drop MP4 files.
-*   Input custom prompts or use templates.
-*   Select Gemini models (`config/models.yaml`).
-*   Analyze videos via Gemini API (uploading files and generating content).
-*   Save analysis results to text files in the `output/` directory.
-*   Manage settings (API key, last used model, etc.) via `config/settings.json` (planned).
-
-## Setup
-
-1.  **Clone the repository:**
+1.  **リポジトリのクローン:**
     ```bash
-    git clone <repository-url>
-    cd GeminiMovieToDoc
+    git clone <リポジトリURL>
+    cd GeminiMovieToDoc2
     ```
-2.  **Create a virtual environment (recommended):**
+2.  **仮想環境の作成 (推奨):**
     ```bash
     python -m venv .venv
-    # On Windows cmd:
+    # Windows コマンドプロンプトの場合:
     .venv\Scripts\activate
-    # On Git Bash / Linux / macOS:
+    # Git Bash / Linux / macOS の場合:
     # source .venv/bin/activate
     ```
-3.  **Install dependencies:**
+3.  **依存関係のインストール:**
     ```bash
     pip install -r requirements.txt
     ```
-4.  **Configure API Key:**
-    *   Rename `.env.example` to `.env`.
-    *   Open `.env` and replace `"YOUR_GEMINI_API_KEY_HERE"` with your actual Google Gemini API key.
-    *   **Important:** Keep your `.env` file secure and do not commit it to version control (`.gitignore` should already exclude it).
+4.  **APIキーの設定:**
+    *   Google Gemini API キーを環境変数 `GEMINI_API_KEY` に設定してください。
+    *   **注意:** APIキーは安全に管理してください。 `.env` ファイルは使用しません。
 
-5.  **Run the application:**
+5.  **アプリケーションの実行:**
     ```bash
-    python src/ui/main_window.py
+    python run_app.py
     ```
 
-## Project Structure
+## ビルド (実行ファイル作成)
 
-(See `詳細仕様.md` for a detailed structure diagram)
+単一の実行ファイルを作成する場合は、以下のコマンドを実行します。
 
-*   `src/`: Main application code.
-    *   `ui/`: PySide6 UI components.
-    *   `backend/`: Gemini API interaction and background tasks.
-    *   `config/`: Configuration loading and validation.
-    *   `utils/`: Common utilities (logging, file operations).
-    *   `cli.py`: Command-line interface (future development).
-*   `tests/`: Unit, integration, and UI tests.
-*   `config/`: User configuration (e.g., `models.yaml`).
-*   `output/`: Default directory for analysis results (Git ignored).
-*   `sample/`: Sample prompts or templates.
-*   `docs/`: Specifications and documentation.
-*   `tests_data/`: Data files used for testing.
+```bash
+pyinstaller --onefile --windowed --icon=icon.ico run_app.py
+# コンソールを表示したい場合 (デバッグ用):
+# pyinstaller --onefile --icon=icon.ico run_app.py
+```
+作成された実行ファイルは `dist` フォルダ内に格納されます。
 
-## Contributing
-
-(Contribution guidelines TBD)
-
-## License
-
-(License information TBD) 
