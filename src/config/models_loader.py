@@ -6,9 +6,19 @@ import yaml
 from pathlib import Path
 from typing import Dict, List, Optional
 
-# プロジェクトのルートディレクトリを特定
-PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
-MODELS_CONFIG_PATH = PROJECT_ROOT / "config" / "models.yaml"
+# 共通関数とロガーをインポート
+from src.utils.path_utils import get_app_root
+from src.utils.logger import app_logger
+
+# アプリケーションルートと設定パスを定義
+APP_ROOT = get_app_root()
+CONFIG_DIR = APP_ROOT / "config"
+MODELS_CONFIG_PATH = CONFIG_DIR / "models.yaml"
+
+# 念のためディレクトリ作成
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
+app_logger.info(f"Models config path set to: {MODELS_CONFIG_PATH}")
 
 
 class ModelInfo:
@@ -31,12 +41,15 @@ def load_models() -> List[ModelInfo]:
     """
     try:
         if not MODELS_CONFIG_PATH.exists():
-            print(f"モデル設定ファイルが見つかりません: {MODELS_CONFIG_PATH}")
+            # print(f"モデル設定ファイルが見つかりません: {MODELS_CONFIG_PATH}")
+            app_logger.warning(f"Model configuration file not found: {MODELS_CONFIG_PATH}")
             return []
-        
+
+        app_logger.info(f"Loading models from: {MODELS_CONFIG_PATH}")
         with open(MODELS_CONFIG_PATH, "r", encoding="utf-8") as f:
             yaml_data = yaml.safe_load(f)
-        
+        app_logger.debug(f"Raw YAML data loaded: {yaml_data}")
+
         models_list = []
         
         # 古い形式の設定ファイルをサポート（直接モデルリスト）
@@ -62,7 +75,8 @@ def load_models() -> List[ModelInfo]:
         return models_list
     
     except Exception as e:
-        print(f"モデル設定の読み込みに失敗しました: {e}")
+        # print(f"モデル設定の読み込みに失敗しました: {e}")
+        app_logger.error(f"Failed to load model configurations from {MODELS_CONFIG_PATH}: {e}", exc_info=True)
         return []
 
 

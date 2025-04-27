@@ -11,12 +11,17 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+from io import StringIO
 
 from rich.logging import RichHandler
 
-# プロジェクトのルートディレクトリを特定
-PROJECT_ROOT = Path(__file__).parent.parent.parent.resolve()
-LOGS_DIR = PROJECT_ROOT / "logs"
+# 共通関数をインポート
+from src.utils.path_utils import get_app_root
+
+# アプリケーションルートとログディレクトリを定義
+APP_ROOT = get_app_root()
+LOG_DIR = APP_ROOT / "logs"
+LOG_DIR.mkdir(parents=True, exist_ok=True) # ログディレクトリを作成
 
 # ログフォーマット
 LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -82,7 +87,7 @@ def setup_logger(name: str = "gemini_movie_analyzer",
     logger.setLevel(min_level)
     
     # ログディレクトリを作成
-    LOGS_DIR.mkdir(exist_ok=True)
+    LOG_DIR.mkdir(exist_ok=True)
     
     # 1. コンソールハンドラの設定（Rich利用）
     console_handler = RichHandler(level=console_level, 
@@ -92,7 +97,7 @@ def setup_logger(name: str = "gemini_movie_analyzer",
     logger.addHandler(console_handler)
     
     # 2. 通常ログファイルハンドラの設定（日次ローテーション、最大30日）
-    log_file = LOGS_DIR / "app.log"
+    log_file = LOG_DIR / "app.log"
     file_handler = TimedRotatingFileHandler(
         filename=log_file,
         when="midnight",
@@ -105,7 +110,7 @@ def setup_logger(name: str = "gemini_movie_analyzer",
     logger.addHandler(file_handler)
     
     # 3. デバッグログファイルハンドラの設定（サイズローテーション）
-    debug_file = LOGS_DIR / "debug.log"
+    debug_file = LOG_DIR / "debug.log"
     debug_handler = RotatingFileHandler(
         filename=debug_file,
         maxBytes=10 * 1024 * 1024,  # 10MB

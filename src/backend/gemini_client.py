@@ -1,13 +1,6 @@
 import sys
 import os
 
-# プロジェクトルートのパスを取得
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-
-# sys.pathにプロジェクトルートを追加
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
-
 """
 Gemini API クライアントラッパー
 - APIキー取得
