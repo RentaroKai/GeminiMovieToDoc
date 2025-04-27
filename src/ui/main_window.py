@@ -424,12 +424,6 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", f"対応していないファイル形式です: {file_path}\n\n※MP4形式の動画ファイルのみ対応しています")
             return
         
-        # ファイルサイズチェック
-        max_size = self.settings.file.max_file_size_mb
-        if not check_file_size(file_path, max_size):
-            QMessageBox.warning(self, "エラー", f"ファイルサイズが大きすぎます: {file_path}\n\n※最大サイズ: {max_size}MB")
-            return
-        
         # 既に追加済みならスキップ
         if file_path in self.video_files:
             logger.debug(f"既に追加済みのファイル: {file_path}")
