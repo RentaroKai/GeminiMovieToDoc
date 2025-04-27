@@ -668,8 +668,13 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
 
-if __name__ == "__main__":
+def run_main_window():
+    """アプリケーションを起動する関数"""
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
-    sys.exit(app.exec()) 
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    run_main_window() 
