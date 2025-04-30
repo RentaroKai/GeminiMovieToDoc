@@ -163,9 +163,10 @@ class MainWindow(QMainWindow):
         #self.setWindowIcon(QIcon("path/to/icon.png"))  # アイコン設定（必要に応じて）
         self.resize(1000, 700)
         
-        # 起動時に「①議事録作成」を選択状態にする
-        # これにより on_template_selected が呼ばれ、初期プロンプトが表示される
+        # 起動時に「①議事録作成」を選択状態にして明示的にシグナル発火
         self.template_combo.setCurrentIndex(0)
+        # 明示的に議事録テンプレート選択を実行（シグナルが発火しない場合のため）
+        self.on_template_selected(0)
     
     def init_ui(self):
         """UIコンポーネントの初期化"""
@@ -505,13 +506,13 @@ class MainWindow(QMainWindow):
             self.prompt_edit.setText(meeting_minutes_prompt)
         elif index == 1: # ②カスタムプロンプト
             # 保存されているカスタムプロンプトを読み込む
-            last_prompt = self.settings.ui.last_prompt
-            if last_prompt:
-                self.prompt_edit.setText(last_prompt)
+            custom_prompt = self.settings.ui.custom_prompt
+            if custom_prompt:
+                self.prompt_edit.setText(custom_prompt)
             else:
                 # 空の場合はクリアし、専用のプレースホルダーを設定
                 self.prompt_edit.clear()
-                self.prompt_edit.setPlaceholderText("何か入力してね")
+                self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
         else:
             # インデックス 2 以降のテンプレート
             templates = {
@@ -533,7 +534,7 @@ class MainWindow(QMainWindow):
         self.template_combo.setCurrentIndex(1)
         self.template_combo.blockSignals(False)
         # カスタムプロンプト用のプレースホルダーを設定
-        self.prompt_edit.setPlaceholderText("何か入力してね")
+        self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
     
     def on_browse_output_dir(self):
         """出力ディレクトリ参照ボタンクリック時の処理"""
@@ -572,6 +573,10 @@ class MainWindow(QMainWindow):
             
             # プロンプト
             self.settings.ui.last_prompt = self.prompt_edit.toPlainText()
+            
+            # カスタムプロンプトの場合、custom_promptにも保存
+            if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+                self.settings.ui.custom_prompt = self.prompt_edit.toPlainText()
             
             # 設定保存
             if save_settings(self.settings):
@@ -645,6 +650,10 @@ class MainWindow(QMainWindow):
         
         # プロンプトを設定に保存
         self.settings.ui.last_prompt = prompt
+        
+        # カスタムプロンプトの場合、custom_promptにも保存
+        if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+            self.settings.ui.custom_prompt = prompt
         
         # ワーカー開始
         self.worker.start()
@@ -722,6 +731,10 @@ class MainWindow(QMainWindow):
         try:
             # プロンプトを保存
             self.settings.ui.last_prompt = self.prompt_edit.toPlainText()
+            
+            # カスタムプロンプトの場合、custom_promptにも保存
+            if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+                self.settings.ui.custom_prompt = self.prompt_edit.toPlainText()
             
             # API関連設定 - マスク文字列ではなく実際のAPIキーを保存
             self.settings.gemini.api_key = self._actual_api_key

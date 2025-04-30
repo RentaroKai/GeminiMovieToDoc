@@ -63,6 +63,7 @@ class FileSettings(BaseModel):
 class UISettings(BaseModel):
     """UI関連の設定"""
     last_prompt: str = Field("", description="最後に使用したプロンプト")
+    custom_prompt: str = Field("", description="カスタムプロンプト用の保存領域")
     template_names: List[str] = Field([], description="プロンプトテンプレート名のリスト")
 
 
