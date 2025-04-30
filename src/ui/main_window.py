@@ -162,6 +162,10 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Gemini Movie Analyzer")
         #self.setWindowIcon(QIcon("path/to/icon.png"))  # アイコン設定（必要に応じて）
         self.resize(1000, 700)
+        
+        # 起動時に「①議事録作成」を選択状態にする
+        # これにより on_template_selected が呼ばれ、初期プロンプトが表示される
+        self.template_combo.setCurrentIndex(0)
     
     def init_ui(self):
         """UIコンポーネントの初期化"""
@@ -232,9 +236,12 @@ class MainWindow(QMainWindow):
         
         # プロンプトテキストエディタ
         self.prompt_edit = QTextEdit()
-        self.prompt_edit.setPlaceholderText("プロンプトを入力または上からテンプレートを選択してください。例: 「この動画について詳しく解析し、主な登場人物、会話内容、重要な場面を説明してください。」")
-        if self.settings.ui.last_prompt:  # 前回のプロンプトを復元
-            self.prompt_edit.setText(self.settings.ui.last_prompt)
+        # デフォルトのプレースホルダーを設定
+        self._default_placeholder = "プロンプトを入力または上からテンプレートを選択してください。例: 「この動画について詳しく解析し、主な登場人物、会話内容、重要な場面を説明してください。」"
+        self.prompt_edit.setPlaceholderText(self._default_placeholder)
+        # ここでの last_prompt の復元は不要。__init__ の最後で setCurrentIndex(0) することで対応
+        # if self.settings.ui.last_prompt:
+        #     self.prompt_edit.setText(self.settings.ui.last_prompt)
         prompt_layout.addWidget(self.prompt_edit)
         
         top_layout.addLayout(prompt_layout)
@@ -460,6 +467,9 @@ class MainWindow(QMainWindow):
         # ログ追加: 選択されたインデックスとテキストを確認
         logger.debug(f"Template selected - index: {index}, text: {self.template_combo.itemText(index)}")
         
+        # まずデフォルトのプレースホルダーに戻す
+        self.prompt_edit.setPlaceholderText(self._default_placeholder)
+        
         if index == 0: # ①議事録作成
             meeting_minutes_prompt = """\
 あなたは優秀な議事録作成者です。以下の会話データから、正確で簡潔な議事録をマークダウン形式で作成してください。
@@ -494,11 +504,16 @@ class MainWindow(QMainWindow):
 """
             self.prompt_edit.setText(meeting_minutes_prompt)
         elif index == 1: # ②カスタムプロンプト
-            # カスタムプロンプト選択時は何もしない (ユーザー入力用)
-            pass # setText しない
+            # 保存されているカスタムプロンプトを読み込む
+            last_prompt = self.settings.ui.last_prompt
+            if last_prompt:
+                self.prompt_edit.setText(last_prompt)
+            else:
+                # 空の場合はクリアし、専用のプレースホルダーを設定
+                self.prompt_edit.clear()
+                self.prompt_edit.setPlaceholderText("何か入力してね")
         else:
             # インデックス 2 以降のテンプレート
-            # templates ディクショナリのキーを現在のインデックス (2, 3, 4) に合わせる
             templates = {
                 2: "この動画の内容を詳しく解析してください。映像に何が映っているか、重要なシーンや出来事、登場人物、話の流れなどを説明してください。動画の主要なメッセージや目的も特定してください。", # ③汎用動画解析
                 3: "この動画を細かく解析し、異なるシーンごとに時間経過に沿って説明してください。各シーンで何が起こっているか、特筆すべき視覚的要素、音声要素、重要な会話や行動を詳細に記述してください。", # ④シーン検出と詳細説明
@@ -509,9 +524,16 @@ class MainWindow(QMainWindow):
     
     def on_clear_prompt(self):
         """プロンプトクリアボタンクリック時の処理"""
+        # テキストエリアをクリア
         self.prompt_edit.clear()
-        # クリア時はカスタムプロンプトを選択状態にする (index=1 がカスタム)
-        self.template_combo.setCurrentIndex(1) # Changed: カスタムプロンプトのインデックスを 1 に修正
+        # 保存されているカスタムプロンプトもリセット
+        self.settings.ui.last_prompt = ""
+        # シグナルをブロックして「②カスタムプロンプト」を選択
+        self.template_combo.blockSignals(True)
+        self.template_combo.setCurrentIndex(1)
+        self.template_combo.blockSignals(False)
+        # カスタムプロンプト用のプレースホルダーを設定
+        self.prompt_edit.setPlaceholderText("何か入力してね")
     
     def on_browse_output_dir(self):
         """出力ディレクトリ参照ボタンクリック時の処理"""
