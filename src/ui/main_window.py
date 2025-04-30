@@ -155,6 +155,9 @@ class MainWindow(QMainWindow):
         # ファイルリスト
         self.video_files = []
         
+        # Markdownバッファ (ストリーミング用)
+        self._md_buffer = ""
+        
         # アプリケーション情報
         self.setWindowTitle("Gemini Movie Analyzer")
         #self.setWindowIcon(QIcon("path/to/icon.png"))  # アイコン設定（必要に応じて）
@@ -211,10 +214,11 @@ class MainWindow(QMainWindow):
         # テンプレートプルダウン
         prompt_toolbar.addWidget(QLabel("テンプレート:"))
         self.template_combo = QComboBox()
-        self.template_combo.addItem("カスタムプロンプト")
-        self.template_combo.addItem("汎用動画解析")
-        self.template_combo.addItem("シーン検出と詳細説明")
-        self.template_combo.addItem("技術的な解析")
+        self.template_combo.addItem("①議事録作成")
+        self.template_combo.addItem("②カスタムプロンプト")
+        self.template_combo.addItem("③汎用動画解析")
+        self.template_combo.addItem("④シーン検出と詳細説明")
+        self.template_combo.addItem("⑤技術的な解析")
         self.template_combo.currentIndexChanged.connect(self.on_template_selected)
         prompt_toolbar.addWidget(self.template_combo)
         
@@ -453,22 +457,61 @@ class MainWindow(QMainWindow):
     
     def on_template_selected(self, index: int):
         """テンプレートが選択されたときの処理"""
-        if index == 0:  # カスタムプロンプト
-            return
+        # ログ追加: 選択されたインデックスとテキストを確認
+        logger.debug(f"Template selected - index: {index}, text: {self.template_combo.itemText(index)}")
         
-        templates = {
-            1: "この動画の内容を詳しく解析してください。映像に何が映っているか、重要なシーンや出来事、登場人物、話の流れなどを説明してください。動画の主要なメッセージや目的も特定してください。",
-            2: "この動画を細かく解析し、異なるシーンごとに時間経過に沿って説明してください。各シーンで何が起こっているか、特筆すべき視覚的要素、音声要素、重要な会話や行動を詳細に記述してください。",
-            3: "この動画の技術的な側面を解析してください。撮影技法、カメラワーク、編集スタイル、特殊効果、照明、音響設計などについて専門的な観点から評価してください。使用されている機材や技術についても推測できる限り言及してください。"
-        }
-        
-        if index in templates:
-            self.prompt_edit.setText(templates[index])
+        if index == 0: # ①議事録作成
+            meeting_minutes_prompt = """\
+あなたは優秀な議事録作成者です。以下の会話データから、正確で簡潔な議事録をマークダウン形式で作成してください。
+
+作成時の重要なポイント：
+1. 形式的な要素
+- 箇条書きを適切に使用し、議題ごとに整理
+- 以下の3セクションで構成：
+  - 議題と議論内容
+  - 決定事項
+  - アクションアイテム
+
+2. 内容面での注意点
+- 重要な議論のポイントを簡潔に記載
+- 担当者が決まった事項は、担当者名を明確に記載
+- 曖昧な表現は避け、具体的な表現に変換
+
+3. 出力形式
+## 議題と議論内容
+- 各議題の要点を箇条書きで記載
+
+## 決定事項
+- 会議で合意された内容を箇条書きで記載
+- 決定に至った理由や背景も簡潔に記載（必要な場合）
+
+## アクションアイテム
+- タスク内容
+- 担当者
+- 期限（設定されている場合）
+
+不明確な情報は「**要確認**」と太字で明記してください。
+"""
+            self.prompt_edit.setText(meeting_minutes_prompt)
+        elif index == 1: # ②カスタムプロンプト
+            # カスタムプロンプト選択時は何もしない (ユーザー入力用)
+            pass # setText しない
+        else:
+            # インデックス 2 以降のテンプレート
+            # templates ディクショナリのキーを現在のインデックス (2, 3, 4) に合わせる
+            templates = {
+                2: "この動画の内容を詳しく解析してください。映像に何が映っているか、重要なシーンや出来事、登場人物、話の流れなどを説明してください。動画の主要なメッセージや目的も特定してください。", # ③汎用動画解析
+                3: "この動画を細かく解析し、異なるシーンごとに時間経過に沿って説明してください。各シーンで何が起こっているか、特筆すべき視覚的要素、音声要素、重要な会話や行動を詳細に記述してください。", # ④シーン検出と詳細説明
+                4: "この動画の技術的な側面を解析してください。撮影技法、カメラワーク、編集スタイル、特殊効果、照明、音響設計などについて専門的な観点から評価してください。使用されている機材や技術についても推測できる限り言及してください。" # ⑤技術的な解析
+            }
+            if index in templates:
+                self.prompt_edit.setText(templates[index])
     
     def on_clear_prompt(self):
         """プロンプトクリアボタンクリック時の処理"""
         self.prompt_edit.clear()
-        self.template_combo.setCurrentIndex(0)
+        # クリア時はカスタムプロンプトを選択状態にする (index=1 がカスタム)
+        self.template_combo.setCurrentIndex(1) # Changed: カスタムプロンプトのインデックスを 1 に修正
     
     def on_browse_output_dir(self):
         """出力ディレクトリ参照ボタンクリック時の処理"""
@@ -558,8 +601,9 @@ class MainWindow(QMainWindow):
         except ValueError:
             max_file_size = self.settings.file.max_file_size_mb
         
-        # 結果テキストをクリア
+        # 結果テキストとMarkdownバッファをクリア
         self.result_text.clear()
+        self._md_buffer = ""
         
         # UI状態更新
         self.set_processing_state(True)
@@ -603,18 +647,21 @@ class MainWindow(QMainWindow):
         self.log_list.update_logs()
     
     def on_result_ready(self, text: str):
-        """結果取得時の処理"""
-        self.result_text.setText(text)
+        """結果取得時の処理 (非ストリーミング)"""
+        # Markdownとして結果を表示
+        self.result_text.setMarkdown(text)
     
     def on_stream_chunk(self, chunk: str):
         """ストリーミングチャンク受信時の処理"""
-        # テキストを追加
-        cursor = self.result_text.textCursor()
-        cursor.movePosition(cursor.MoveOperation.End)
-        cursor.insertText(chunk)
-        
-        # 自動スクロール
-        self.result_text.ensureCursorVisible()
+        # チャンクをバッファに追加
+        self._md_buffer += chunk
+        # バッファの内容をMarkdownとして表示
+        self.result_text.setMarkdown(self._md_buffer)
+
+        # 自動スクロール (一番下まで)
+        # スクロールバーを取得して最大値に設定
+        scrollbar = self.result_text.verticalScrollBar()
+        scrollbar.setValue(scrollbar.maximum())
     
     def on_worker_complete(self, output_file: str):
         """処理完了時の処理"""
