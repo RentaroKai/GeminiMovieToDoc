@@ -529,6 +529,7 @@ class MainWindow(QMainWindow):
         self.prompt_edit.clear()
         # 保存されているカスタムプロンプトもリセット
         self.settings.ui.last_prompt = ""
+        self.settings.ui.custom_prompt = ""  # カスタムプロンプトもクリア
         # シグナルをブロックして「②カスタムプロンプト」を選択
         self.template_combo.blockSignals(True)
         self.template_combo.setCurrentIndex(1)
