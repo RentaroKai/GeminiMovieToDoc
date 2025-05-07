@@ -9,6 +9,8 @@ models:
     description: "Fast and versatile model for most tasks"
   - name: "gemini-2.5-pro-exp-03-25"
     description: "Most capable model for complex tasks"
+  - name: "gemini-2.5-pro-preview-05-06"
+    description: "best model for complex tasks"
 # You can add more models here following the same format
 # - name: "other-model-name"
 #   description: "Description of the other model" 
