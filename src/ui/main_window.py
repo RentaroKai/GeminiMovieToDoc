@@ -144,9 +144,22 @@ class MainWindow(QMainWindow):
         
         # 実際のAPIキーを内部で保持（UIのマスク表示と分離）
         self._actual_api_key = self.settings.gemini.api_key or ""
+        # 小/大モード切替フラグ（初期は小モード）
+        self._is_small_mode = True
         
-        # UIの初期化
+        # Largeモード用UIを生成（中央ウィジェットは後で設定）
         self.init_ui()
+        # Smallモード用UIを生成
+        self.build_small_frame()
+        # Small/Large UIをまとめるコンテナを設定
+        container = QWidget()
+        container_layout = QVBoxLayout(container)
+        container_layout.addWidget(self.small_frame)
+        container_layout.addWidget(self.large_frame)
+        self.setCentralWidget(container)
+        # 初期状態は小モード（small_frameのみ表示）
+        self.large_frame.hide()
+        self.adjustSize()
         
         # ワーカーの初期化
         self.worker = GeminiWorker()
@@ -161,7 +174,7 @@ class MainWindow(QMainWindow):
         # アプリケーション情報
         self.setWindowTitle("Gemini Movie Analyzer")
         #self.setWindowIcon(QIcon("path/to/icon.png"))  # アイコン設定（必要に応じて）
-        self.resize(1000, 700)
+        # (サイズはモード切替時に自動設定)
         
         # 起動時に「①議事録作成」を選択状態にして明示的にシグナル発火
         self.template_combo.setCurrentIndex(0)
@@ -170,8 +183,9 @@ class MainWindow(QMainWindow):
     
     def init_ui(self):
         """UIコンポーネントの初期化"""
-        # メインウィジェットとレイアウト
         main_widget = QWidget()
+        # Largeモード用フレームとして保持（中央ウィジェットは外で設定）
+        self.large_frame = main_widget
         main_layout = QVBoxLayout(main_widget)
         
         # 上部と下部に分割
@@ -405,9 +419,6 @@ class MainWindow(QMainWindow):
         
         # スプリッターの初期サイズ比率を設定
         splitter.setSizes([400, 300])
-        
-        # メインウィジェットを設定
-        self.setCentralWidget(main_widget)
     
     def _on_api_key_changed(self):
         """APIキー入力欄が変更されたときの処理"""
@@ -705,6 +716,12 @@ class MainWindow(QMainWindow):
         )
         # ログを更新
         self.log_list.update_logs()
+        # 結果テキストを自動で開く
+        try:
+            os.startfile(output_file)
+            logger.debug(f"結果ファイルを自動オープン: {output_file}")
+        except Exception as e:
+            logger.error(f"自動オープン失敗: {e}")
     
     def set_processing_state(self, is_processing: bool):
         """処理中の UI 状態を設定"""
@@ -752,6 +769,40 @@ class MainWindow(QMainWindow):
         
         # 親クラスの処理を呼び出し
         super().closeEvent(event)
+
+    def build_small_frame(self):
+        """小モード用UIを作成"""
+        self.small_frame = QWidget()
+        layout = QHBoxLayout(self.small_frame)
+        # ファイル選択ボタン
+        btn_file = QPushButton("ファイル選択...")
+        btn_file.clicked.connect(self.on_select_file)
+        layout.addWidget(btn_file)
+        # 動画解析ボタン
+        btn_analyze = QPushButton("動画を解析")
+        btn_analyze.clicked.connect(self.on_analyze)
+        layout.addWidget(btn_analyze)
+        # 大モード切替ボタン
+        btn_toggle = QPushButton("詳細")
+        btn_toggle.clicked.connect(self.toggle_mode)
+        layout.addWidget(btn_toggle)
+
+    def toggle_mode(self):
+        """小/大モード切替"""
+        if self._is_small_mode:
+            # 小モード→大モード
+            self.small_frame.hide()
+            self.large_frame.show()
+            # 大モード用のデフォルトサイズ
+            self.resize(1000, 700)
+        else:
+            # 大モード→小モード
+            self.large_frame.hide()
+            self.small_frame.show()
+            # 小モードに合わせて自動調整
+            self.adjustSize()
+        self._is_small_mode = not self._is_small_mode
+        logger.debug(f"表示モード切替: {'小モード' if self._is_small_mode else '大モード'}")
 
 
 def run_main_window():
