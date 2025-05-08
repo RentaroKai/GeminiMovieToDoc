@@ -13,7 +13,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTextEdit, QComboBox, QLineEdit, QFileDialog,
     QProgressBar, QTabWidget, QMessageBox, QSplitter, QFrame,
-    QListWidget, QListWidgetItem, QCheckBox, QGroupBox
+    QListWidget, QListWidgetItem, QCheckBox, QGroupBox, QToolButton
 )
 from PySide6.QtCore import Qt, QUrl, Signal, QSize, QMimeData
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon
@@ -187,6 +187,16 @@ class MainWindow(QMainWindow):
         # Largeモード用フレームとして保持（中央ウィジェットは外で設定）
         self.large_frame = main_widget
         main_layout = QVBoxLayout(main_widget)
+        
+        # 折りたたみ用の矢印ボタンを大モード内に配置
+        header_layout = QHBoxLayout()
+        header_layout.addStretch()
+        self.collapse_button = QToolButton()
+        self.collapse_button.setArrowType(Qt.ArrowType.UpArrow)
+        self.collapse_button.setToolTip("簡易表示に縮小")
+        self.collapse_button.clicked.connect(self.toggle_mode)
+        header_layout.addWidget(self.collapse_button)
+        main_layout.addLayout(header_layout)
         
         # 上部と下部に分割
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -456,6 +466,10 @@ class MainWindow(QMainWindow):
         self.video_files.append(file_path)
         self.file_list.addItem(Path(file_path).name)
         
+        # 小モード用: 選択ファイル名を更新
+        if hasattr(self, 'small_file_label'):
+            self.small_file_label.setText(Path(file_path).name)
+        
         # UI状態更新
         self.update_ui_state()
     
@@ -473,6 +487,10 @@ class MainWindow(QMainWindow):
         self.video_files = []
         self.file_list.clear()
         self.update_ui_state()
+        
+        # 小モード用: ファイル表示リセット
+        if hasattr(self, 'small_file_label'):
+            self.small_file_label.setText("ファイル: 未選択")
     
     def on_template_selected(self, index: int):
         """テンプレートが選択されたときの処理"""
@@ -778,14 +796,37 @@ class MainWindow(QMainWindow):
         btn_file = QPushButton("ファイル選択...")
         btn_file.clicked.connect(self.on_select_file)
         layout.addWidget(btn_file)
+        # 選択ファイル名表示用ラベル
+        self.small_file_label = QLabel("ファイル: 未選択")
+        layout.addWidget(self.small_file_label)
         # 動画解析ボタン
         btn_analyze = QPushButton("動画を解析")
         btn_analyze.clicked.connect(self.on_analyze)
+        # 大モードと同じ色付けを適用
+        btn_analyze.setStyleSheet("""
+            QPushButton {
+                background-color: #2980b9;
+                color: white;
+                padding: 8px;
+                font-weight: bold;
+                border-radius: 4px;
+                min-height: 30px;
+            }
+            QPushButton:hover {
+                background-color: #3498db;
+            }
+            QPushButton:disabled {
+                background-color: #95a5a6;
+            }
+        """)
         layout.addWidget(btn_analyze)
-        # 大モード切替ボタン
-        btn_toggle = QPushButton("詳細")
-        btn_toggle.clicked.connect(self.toggle_mode)
-        layout.addWidget(btn_toggle)
+        # 詳細（大モード）に展開する矢印ボタン
+        layout.addStretch()
+        self.expand_button = QToolButton()
+        self.expand_button.setArrowType(Qt.ArrowType.DownArrow)
+        self.expand_button.setToolTip("詳細表示に展開")
+        self.expand_button.clicked.connect(self.toggle_mode)
+        layout.addWidget(self.expand_button)
 
     def toggle_mode(self):
         """小/大モード切替"""
