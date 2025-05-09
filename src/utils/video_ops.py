@@ -75,12 +75,19 @@ def compress_video_to_target(
             "-movflags", "+faststart",
             str(output_path)
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.returncode != 0:
-            logger.error(f"faststart 再パッケージエラー: {result.stderr}")
+        logger.debug(f"Running ffmpeg cmd (faststart): {' '.join(cmd)}")
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                logger.error(f"faststart 再パッケージエラー: {result.stderr}")
+                return input_path
+            logger.info(f"faststart 形式に再パッケージ完了: {output_path}")
+            if progress_cb:
+                progress_cb("faststart 形式に再パッケージ完了", 5)
+            return output_path
+        except OSError as e:
+            logger.error(f"faststart 再パッケージ中にOSError: {e}")
             return input_path
-        logger.info(f"faststart 形式に再パッケージ完了: {output_path}")
-        return output_path
 
     # 進捗通知
     if progress_cb:
@@ -124,7 +131,7 @@ def compress_video_to_target(
             "-b:a", "128k",
             str(output_path)
         ]
-
+        logger.debug(f"Running ffmpeg cmd (CRF {crf}): {' '.join(cmd)}")
         try:
             # FFmpegを実行
             result = subprocess.run(

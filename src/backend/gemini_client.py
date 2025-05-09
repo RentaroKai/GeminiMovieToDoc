@@ -168,6 +168,8 @@ class GeminiClient:
             bool: 処理がACTIVEになった場合はTrue、タイムアウトまたは失敗した場合はFalse
         """
         logger.info(f"ファイル処理待機開始: {file_reference.name}")
+        # 初期リトライ遅延を設定
+        retry_delay = FILE_WAIT_RETRY_DELAY
         for attempt in range(MAX_FILE_WAIT_RETRIES):
             try:
                 current_file = self.client.files.get(name=file_reference.name)
@@ -185,7 +187,11 @@ class GeminiClient:
                 logger.warning(f"ファイル状態取得エラー ({file_reference.name}): {e}")
                 # 状態取得エラーでもリトライを続ける
 
-            time.sleep(FILE_WAIT_RETRY_DELAY)
+            # 次回リトライ前に指数バックオフ + ジッターで待機
+            jitter = random.uniform(0, 0.1 * retry_delay)
+            retry_delay = min(retry_delay * 2 + jitter, MAX_RETRY_DELAY)
+            logger.debug(f"ファイル状態確認待機: {retry_delay:.2f}秒後に次の試行")
+            time.sleep(retry_delay)
             
         logger.error(f"ファイル処理待機タイムアウト: {file_reference.name} ({MAX_FILE_WAIT_RETRIES}回試行)")
         return False
@@ -221,7 +227,10 @@ class GeminiClient:
             
             # ファイル参照があれば追加
             if file_reference:
-                file = self.client.files.get(name=file_reference["name"])
+                file = self._retry_operation(
+                    lambda: self.client.files.get(name=file_reference["name"]),
+                    f"ファイル取得: {file_reference['name']}"
+                )
                 contents.append(file)
             
             if streaming:
@@ -296,7 +305,10 @@ class GeminiClient:
             
             # ファイル参照があれば追加
             if file_reference:
-                file = self.client.files.get(name=file_reference["name"])
+                file = self._retry_operation(
+                    lambda: self.client.files.get(name=file_reference["name"]),
+                    f"ファイル取得: {file_reference['name']}"
+                )
                 contents.append(file)
             
             if streaming:
@@ -408,12 +420,16 @@ class GeminiClient:
         """アップロードしたファイルを削除"""
         for file_ref in self.file_references:
             try:
-                self.client.files.delete(name=file_ref.name)
+                # リトライ付きでファイル削除を実行
+                self._retry_operation(
+                    lambda: self.client.files.delete(name=file_ref.name),
+                    f"ファイル削除: {file_ref.name}"
+                )
                 logger.debug(f"アップロードファイル削除: {file_ref.name}")
             except Exception as e:
                 logger.warning(f"ファイル削除エラー ({file_ref.name}): {e}")
         
-        # リストをクリア
+        # 削除を試行したファイル参照リストをクリア
         self.file_references = []
 
 
