@@ -39,9 +39,9 @@ def compress_video_to_target(
 
     Returns:
         圧縮後ファイルのパス（Path オブジェクト）。
-        すでに条件を満たす場合は元の Path をそのまま返す。
+        すでに条件を満たす場合は faststart 形式に再パッケージしたファイルパスを返す。
         FFmpeg が見つからない場合は None を返す。
-        
+
     Raises:
         RuntimeError: 圧縮が失敗した場合 (CRF上限到達など)。
         FileNotFoundError: 入力ファイルが見つからない場合。
@@ -57,22 +57,41 @@ def compress_video_to_target(
 
     # 現在のファイルサイズをチェック
     current_size_mb = input_path.stat().st_size / (1024 * 1024)
-    
-    # すでにターゲットサイズより小さい場合は処理不要
+
+    # すでにターゲットサイズより小さい場合はストリーミング対応に再パッケージ
     if current_size_mb <= target_size_mb:
         logger.info(f"ファイルサイズは既に目標以下です: {current_size_mb:.2f}MB / {target_size_mb}MB")
-        return input_path
+        # faststart 形式に再パッケージ
+        output_stem = f"{input_path.stem}_faststart"
+        output_path = input_path.with_stem(output_stem)
+        counter = 1
+        while output_path.exists():
+            output_path = input_path.with_stem(f"{output_stem}_{counter}")
+            counter += 1
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", str(input_path),
+            "-c", "copy",
+            "-movflags", "+faststart",
+            str(output_path)
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"faststart 再パッケージエラー: {result.stderr}")
+            return input_path
+        logger.info(f"faststart 形式に再パッケージ完了: {output_path}")
+        return output_path
 
     # 進捗通知
     if progress_cb:
         progress_cb(f"動画圧縮を開始します: {current_size_mb:.2f}MB → {target_size_mb}MB", 5)
-    
+
     logger.info(f"動画圧縮開始: {input_path} ({current_size_mb:.2f}MB → {target_size_mb}MB)")
 
     # 一時出力ファイルのパスを作成
     output_stem = f"{input_path.stem}_compressed"
     output_path = input_path.with_stem(output_stem)
-    
+
     # すでに同名ファイルが存在する場合は連番を付与
     counter = 1
     while output_path.exists():
@@ -82,17 +101,17 @@ def compress_video_to_target(
     # CRF値を変えながら圧縮を試行
     crf = DEFAULT_CRF_START
     success = False
-    
+
     while crf <= DEFAULT_CRF_MAX:
         if progress_cb:
             progress_cb(f"CRF {crf} で圧縮中...", 10 + (crf - DEFAULT_CRF_START) * 10)
-        
+
         logger.info(f"CRF {crf} での圧縮を試行中...")
-        
+
         # 前回の出力ファイルが存在する場合は削除
         if output_path.exists():
             output_path.unlink()
-        
+
         # FFmpegコマンドを構築
         cmd = [
             "ffmpeg", "-y",
@@ -105,7 +124,7 @@ def compress_video_to_target(
             "-b:a", "128k",
             str(output_path)
         ]
-        
+
         try:
             # FFmpegを実行
             result = subprocess.run(
@@ -114,33 +133,33 @@ def compress_video_to_target(
                 text=True,
                 check=False  # エラーで例外を発生させない
             )
-            
+
             # エラー時はログに出力して次のCRFへ
             if result.returncode != 0:
                 logger.error(f"FFmpeg実行エラー (CRF {crf}): {result.stderr}")
                 crf += DEFAULT_CRF_STEP
                 continue
-            
+
             # 出力ファイルが存在するか確認
             if not output_path.exists():
                 logger.error(f"FFmpegが出力ファイルを生成しませんでした (CRF {crf})")
                 crf += DEFAULT_CRF_STEP
                 continue
-            
+
             # サイズ確認
             output_size_mb = output_path.stat().st_size / (1024 * 1024)
             logger.info(f"圧縮結果 (CRF {crf}): {output_size_mb:.2f}MB")
-            
+
             if output_size_mb <= target_size_mb:
                 # 目標達成
                 logger.info(f"目標サイズ達成: {output_size_mb:.2f}MB / {target_size_mb}MB (CRF {crf})")
                 success = True
                 break
-            
+
             # 目標未達成の場合はCRFを上げて再試行
             logger.info(f"目標サイズ未達: {output_size_mb:.2f}MB > {target_size_mb}MB, CRFを {crf+DEFAULT_CRF_STEP} に上げて再試行")
             crf += DEFAULT_CRF_STEP
-            
+
         except Exception as e:
             logger.error(f"FFmpeg実行中に例外が発生 (CRF {crf}): {e}", exc_info=True)
             # 出力ファイルを削除して次のCRFへ
@@ -157,4 +176,4 @@ def compress_video_to_target(
         # 最後の出力ファイルを削除
         if output_path.exists():
             output_path.unlink()
-        raise RuntimeError(f"最大CRF ({DEFAULT_CRF_MAX}) でも目標サイズ ({target_size_mb}MB) を達成できませんでした") 
+        raise RuntimeError(f"最大CRF ({DEFAULT_CRF_MAX}) でも目標サイズ ({target_size_mb}MB) を達成できませんでした")
