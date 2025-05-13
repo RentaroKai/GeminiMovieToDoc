@@ -414,6 +414,19 @@ class MainWindow(QMainWindow):
         
         settings_layout.addWidget(output_group)
         
+        # 入力設定
+        input_group = QGroupBox("入力設定")
+        input_layout = QVBoxLayout(input_group)
+        input_dir_layout = QHBoxLayout()
+        input_dir_layout.addWidget(QLabel("ファイル選択時のフォルダ:"))
+        self.input_dir_edit = QLineEdit(str(self.settings.file.input_directory))
+        input_dir_layout.addWidget(self.input_dir_edit, 2)
+        self.browse_input_btn = QPushButton("参照...")
+        self.browse_input_btn.clicked.connect(self.on_browse_input_dir)
+        input_dir_layout.addWidget(self.browse_input_btn)
+        input_layout.addLayout(input_dir_layout)
+        settings_layout.addWidget(input_group)
+        
         # 設定保存ボタン
         save_settings_btn = QPushButton("設定を保存")
         save_settings_btn.clicked.connect(self.on_save_settings)
@@ -476,7 +489,7 @@ class MainWindow(QMainWindow):
     def on_select_file(self):
         """ファイル選択ボタンクリック時の処理"""
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "MP4ファイルを選択", "", "MP4ファイル (*.mp4)"
+            self, "MP4ファイルを選択", str(self.settings.file.input_directory), "MP4ファイル (*.mp4)"
         )
         
         if file_path:
@@ -575,11 +588,23 @@ class MainWindow(QMainWindow):
         if dir_path:
             self.output_dir_edit.setText(dir_path)
     
+    def on_browse_input_dir(self):
+        """入力ディレクトリ参照ボタンクリック時の処理"""
+        dir_path = QFileDialog.getExistingDirectory(
+            self, "ファイル選択時のフォルダを選択", str(self.settings.file.input_directory)
+        )
+        
+        if dir_path:
+            self.input_dir_edit.setText(dir_path)
+    
     def on_save_settings(self):
         """設定保存ボタンクリック時の処理"""
         try:
             # 出力ディレクトリ
             self.settings.file.output_directory = Path(self.output_dir_edit.text())
+            
+            # 入力ディレクトリ
+            self.settings.file.input_directory = Path(self.input_dir_edit.text())
             
             # BOM設定
             self.settings.file.use_bom = self.bom_check.isChecked()

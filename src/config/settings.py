@@ -52,6 +52,7 @@ class FileSettings(BaseModel):
     max_file_size_mb: int = Field(500, description="アップロード可能な最大ファイルサイズ(MB)")
     output_directory: Path = Field(OUTPUT_DIR, description="解析結果の保存先ディレクトリ")
     use_bom: bool = Field(True, description="出力ファイルにBOMを付与するか (Windowsでの文字化け防止)")
+    input_directory: Path = Field(APP_ROOT, description="ファイル選択時にデフォルトで開くフォルダ")
     
     @validator('max_file_size_mb')
     def validate_file_size(cls, v):
@@ -140,6 +141,9 @@ def save_settings(settings: Settings) -> bool:
         # Pathオブジェクトを文字列に変換
         if "file" in settings_dict and "output_directory" in settings_dict["file"]:
             settings_dict["file"]["output_directory"] = str(settings_dict["file"]["output_directory"])
+        # 入力ディレクトリも文字列に変換
+        if "file" in settings_dict and "input_directory" in settings_dict["file"]:
+            settings_dict["file"]["input_directory"] = str(settings_dict["file"]["input_directory"])
         
         # API Keyをそのまま保存するように変更
         # if "gemini" in settings_dict and settings_dict["gemini"].get("api_key"):
