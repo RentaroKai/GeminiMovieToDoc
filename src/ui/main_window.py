@@ -772,7 +772,17 @@ class MainWindow(QMainWindow):
         self.analyze_btn.setEnabled(not is_processing)
         self.select_file_btn.setEnabled(not is_processing)
         self.clear_file_btn.setEnabled(not is_processing)
-        
+        # 小モード用UI制御
+        if hasattr(self, 'small_analyze_btn'):
+            self.small_analyze_btn.setEnabled(not is_processing)
+        if hasattr(self, 'small_select_file_btn'):
+            self.small_select_file_btn.setEnabled(not is_processing)
+        if hasattr(self, 'small_status_label'):
+            self.small_status_label.setText("実行中..." if is_processing else "準備完了")
+        if hasattr(self, 'small_frame'):
+            # objectNameセレクタで外枠のみボーダー適用
+            style = "#smallFrame { border: 2px solid #3498db; }" if is_processing else ""
+            self.small_frame.setStyleSheet(style)
         # 進捗バーをリセットまたはインディケータモードに
         if is_processing:
             self.progress_bar.setValue(0)
@@ -816,19 +826,21 @@ class MainWindow(QMainWindow):
     def build_small_frame(self):
         """小モード用UIを作成"""
         self.small_frame = QWidget()
+        # 外枠のみスタイル適用するためobjectNameを設定
+        self.small_frame.setObjectName("smallFrame")
         layout = QHBoxLayout(self.small_frame)
         # ファイル選択ボタン
-        btn_file = QPushButton("ファイル選択...")
-        btn_file.clicked.connect(self.on_select_file)
-        layout.addWidget(btn_file)
+        self.small_select_file_btn = QPushButton("ファイル選択...")
+        self.small_select_file_btn.clicked.connect(self.on_select_file)
+        layout.addWidget(self.small_select_file_btn)
         # 選択ファイル名表示用ラベル
         self.small_file_label = QLabel("ファイル: 未選択")
         layout.addWidget(self.small_file_label)
         # 動画解析ボタン
-        btn_analyze = QPushButton("動画を解析")
-        btn_analyze.clicked.connect(self.on_analyze)
+        self.small_analyze_btn = QPushButton("動画を解析")
+        self.small_analyze_btn.clicked.connect(self.on_analyze)
         # 大モードと同じ色付けを適用
-        btn_analyze.setStyleSheet("""
+        self.small_analyze_btn.setStyleSheet("""
             QPushButton {
                 background-color: #2980b9;
                 color: white;
@@ -844,7 +856,10 @@ class MainWindow(QMainWindow):
                 background-color: #95a5a6;
             }
         """)
-        layout.addWidget(btn_analyze)
+        layout.addWidget(self.small_analyze_btn)
+        # 小モード用ステータスラベルを追加
+        self.small_status_label = QLabel("準備完了")
+        layout.addWidget(self.small_status_label)
         # 詳細（大モード）に展開する矢印ボタン
         layout.addStretch()
         self.expand_button = QToolButton()
