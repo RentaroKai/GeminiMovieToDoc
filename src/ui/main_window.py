@@ -891,6 +891,10 @@ def run_main_window():
     app = QApplication(sys.argv)
     window = MainWindow()
     window.show()
+    logger.debug("起動時: メインウィンドウを表示しました")
+    window.raise_()
+    window.activateWindow()
+    logger.debug("起動時: メインウィンドウを最前面に表示しました")
     sys.exit(app.exec())
 
 
