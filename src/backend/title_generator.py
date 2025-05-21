@@ -10,7 +10,7 @@ from src.backend.gemini_client import GeminiClient
 from src.utils.logger import app_logger as logger
 
 # Geminiに投げるプロンプトテンプレート
-# デフォルトモデル gemini-2.5-flash-preview-04-17 を想定
+# デフォルトモデル gemini-2.5-flash-preview-05-20 を想定
 TITLE_GENERATION_PROMPT = """
 以下のテキスト内容を要約し、ファイル名として適切な短いタイトルを日本語で生成してください。
 タイトルには記号や特殊文字を含めず、JSON形式 ({{\"title\": \"生成されたタイトル\"}}) で返してください。

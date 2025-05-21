@@ -5,7 +5,7 @@
 
 # Example models - replace with actual available models
 models:
-  - name: "gemini-2.5-flash-preview-04-17"
+  - name: "gemini-2.5-flash-preview-05-20"
     description: "Fast and versatile model for most tasks"
   - name: "gemini-2.5-pro-exp-03-25"
     description: "Most capable model for complex tasks"
