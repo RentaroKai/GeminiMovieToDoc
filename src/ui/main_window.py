@@ -13,10 +13,11 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QTextEdit, QComboBox, QLineEdit, QFileDialog,
     QProgressBar, QTabWidget, QMessageBox, QSplitter, QFrame,
-    QListWidget, QListWidgetItem, QCheckBox, QGroupBox, QToolButton
+    QListWidget, QListWidgetItem, QCheckBox, QGroupBox, QToolButton,
+    QDialog
 )
 from PySide6.QtCore import Qt, QUrl, Signal, QSize, QMimeData
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon
+from PySide6.QtGui import QDragEnterEvent, QDropEvent, QIcon, QClipboard
 
 from src.utils.logger import app_logger as logger, get_gui_logs
 from src.utils.file_ops import is_valid_mp4, check_file_size
@@ -130,6 +131,87 @@ class LogDisplay(QListWidget):
         # 最新のログまでスクロール
         if self.count() > 0:
             self.scrollToBottom()
+
+
+class CompletionDialog(QDialog):
+    """
+    処理完了通知用のカスタムダイアログ
+    """
+    def __init__(self, parent=None, output_file: str = "", markdown_content: str = ""):
+        super().__init__(parent)
+        self.output_file = output_file
+        self.markdown_content = markdown_content
+        self.result = None  # どのボタンが押されたかを記録
+        
+        self.setWindowTitle("処理完了")
+        self.setModal(True)
+        self.setFixedSize(400, 200)
+        
+        # レイアウト設定
+        layout = QVBoxLayout(self)
+        
+        # メッセージ表示
+        message_label = QLabel(f"動画の解析が完了しました。\n結果は以下に保存されました:\n{output_file}")
+        message_label.setWordWrap(True)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(message_label)
+        
+        # ボタンレイアウト
+        button_layout = QHBoxLayout()
+        
+        # OKボタン
+        ok_button = QPushButton("OK")
+        ok_button.clicked.connect(self.on_ok_clicked)
+        ok_button.setDefault(True)
+        button_layout.addWidget(ok_button)
+        
+        # クリップボードにコピーボタン
+        copy_button = QPushButton("クリップボードにコピー")
+        copy_button.clicked.connect(self.on_copy_clicked)
+        button_layout.addWidget(copy_button)
+        
+        layout.addLayout(button_layout)
+        
+        logger.debug(f"処理完了ダイアログを初期化: ファイル={output_file}, コンテンツ長={len(markdown_content)}")
+    
+    def on_ok_clicked(self):
+        """OKボタンクリック時の処理"""
+        logger.debug("処理完了ダイアログ: OKボタンがクリックされました")
+        self.result = "ok"
+        self.accept()
+    
+    def on_copy_clicked(self):
+        """クリップボードにコピーボタンクリック時の処理"""
+        logger.debug("処理完了ダイアログ: クリップボードにコピーボタンがクリックされました")
+        try:
+            # クリップボードにHTMLレンダリング済みコンテンツをコピー
+            clipboard = QApplication.clipboard()
+            
+            # 親ウィンドウ（MainWindow）から結果テキストのHTMLを取得
+            parent_window = self.parent()
+            if parent_window and hasattr(parent_window, 'result_text'):
+                # QTextEditからHTMLを取得（マークダウンがレンダリングされた状態）
+                html_content = parent_window.result_text.toHtml()
+                logger.debug(f"HTMLコンテンツを取得: {len(html_content)}文字")
+                
+                # MIMEデータを作成してHTMLとプレーンテキストの両方を設定
+                mime_data = QMimeData()
+                mime_data.setHtml(html_content)
+                # プレーンテキストとしてはマークダウンソースを設定（フォールバック用）
+                mime_data.setText(self.markdown_content)
+                
+                clipboard.setMimeData(mime_data)
+                logger.info(f"HTMLレンダリング済みコンテンツをクリップボードにコピーしました（HTML: {len(html_content)}文字, テキスト: {len(self.markdown_content)}文字）")
+            else:
+                # フォールバック: マークダウンソースをコピー
+                clipboard.setText(self.markdown_content)
+                logger.warning("親ウィンドウまたは結果テキストが見つからないため、マークダウンソースをコピーしました")
+            
+            self.result = "copy"
+            self.accept()
+        except Exception as e:
+            logger.error(f"クリップボードへのコピーに失敗しました: {e}")
+            QMessageBox.warning(self, "エラー", f"クリップボードへのコピーに失敗しました: {e}")
 
 
 class MainWindow(QMainWindow):
@@ -752,11 +834,32 @@ class MainWindow(QMainWindow):
     def on_worker_complete(self, output_file: str):
         """処理完了時の処理"""
         self.set_processing_state(False)
-        QMessageBox.information(
-            self, 
-            "処理完了", 
-            f"動画の解析が完了しました。\n結果は以下に保存されました:\n{output_file}"
-        )
+        
+        # マークダウンコンテンツを取得
+        markdown_content = ""
+        try:
+            if self.streaming_check.isChecked():
+                # ストリーミングモードの場合はバッファから取得
+                markdown_content = self._md_buffer
+                logger.debug(f"ストリーミングモード: バッファから{len(markdown_content)}文字のマークダウンを取得")
+            else:
+                # 非ストリーミングモードの場合は結果テキストから取得
+                markdown_content = self.result_text.toMarkdown()
+                logger.debug(f"非ストリーミングモード: 結果テキストから{len(markdown_content)}文字のマークダウンを取得")
+        except Exception as e:
+            logger.error(f"マークダウンコンテンツの取得に失敗: {e}")
+            markdown_content = ""
+        
+        # カスタムダイアログを表示
+        dialog = CompletionDialog(self, output_file, markdown_content)
+        dialog.exec()
+        
+        # ダイアログの結果をログに記録
+        if dialog.result == "copy":
+            logger.info("ユーザーがクリップボードにコピーを選択しました")
+        else:
+            logger.info("ユーザーがOKを選択しました")
+        
         # ログを更新
         self.log_list.update_logs()
         # 結果テキストを自動で開く
