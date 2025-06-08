@@ -262,6 +262,12 @@ class MainWindow(QMainWindow):
         self.template_combo.setCurrentIndex(0)
         # 明示的に議事録テンプレート選択を実行（シグナルが発火しない場合のため）
         self.on_template_selected(0)
+        
+        # 初期表示時にドロップエリアのテキストを設定
+        if self.settings.file.multiple_video_mode:
+            self.drop_area.setText("MP4ファイルをここにドラッグ＆ドロップ（複数ファイル対応）")
+        else:
+            self.drop_area.setText("MP4ファイルをここにドラッグ＆ドロップ")
     
     def init_ui(self):
         """UIコンポーネントの初期化"""
@@ -507,6 +513,17 @@ class MainWindow(QMainWindow):
         self.browse_input_btn.clicked.connect(self.on_browse_input_dir)
         input_dir_layout.addWidget(self.browse_input_btn)
         input_layout.addLayout(input_dir_layout)
+        
+        # 複数動画モード設定
+        multiple_video_layout = QHBoxLayout()
+        multiple_video_layout.addWidget(QLabel("動画アップロードモード:"))
+        self.multiple_video_check = QCheckBox("複数動画を同時に処理する")
+        self.multiple_video_check.setChecked(self.settings.file.multiple_video_mode)
+        self.multiple_video_check.toggled.connect(self.on_multiple_video_mode_changed)
+        multiple_video_layout.addWidget(self.multiple_video_check)
+        multiple_video_layout.addStretch(1)
+        input_layout.addLayout(multiple_video_layout)
+        
         settings_layout.addWidget(input_group)
         
         # 設定保存ボタン
@@ -552,18 +569,32 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", f"対応していないファイル形式です: {file_path}\n\n※MP4形式の動画ファイルのみ対応しています")
             return
         
-        # 既に追加済みならスキップ
-        if file_path in self.video_files:
-            logger.debug(f"既に追加済みのファイル: {file_path}")
-            return
+        # 複数動画モードの確認
+        is_multiple_mode = self.settings.file.multiple_video_mode
         
-        # ファイルリストに追加
-        self.video_files.append(file_path)
-        self.file_list.addItem(Path(file_path).name)
+        if is_multiple_mode:
+            # 複数動画モード: 既に追加済みならスキップ
+            if file_path in self.video_files:
+                logger.debug(f"既に追加済みのファイル: {file_path}")
+                return
+            
+            # ファイルリストに追加
+            self.video_files.append(file_path)
+            self.file_list.addItem(Path(file_path).name)
+            logger.info(f"複数動画モード: ファイル追加 ({len(self.video_files)}個目) - {Path(file_path).name}")
+        else:
+            # 単一動画モード: 既存ファイルを置き換え
+            self.video_files = [file_path]
+            self.file_list.clear()
+            self.file_list.addItem(Path(file_path).name)
+            logger.info(f"単一動画モード: ファイル置換 - {Path(file_path).name}")
         
         # 小モード用: 選択ファイル名を更新
         if hasattr(self, 'small_file_label'):
-            self.small_file_label.setText(Path(file_path).name)
+            if is_multiple_mode and len(self.video_files) > 1:
+                self.small_file_label.setText(f"ファイル: {len(self.video_files)}個選択済み")
+            else:
+                self.small_file_label.setText(Path(file_path).name)
         
         # UI状態更新
         self.update_ui_state()
@@ -679,6 +710,30 @@ class MainWindow(QMainWindow):
         if dir_path:
             self.input_dir_edit.setText(dir_path)
     
+    def on_multiple_video_mode_changed(self, checked: bool):
+        """複数動画モード切替時の処理"""
+        logger.debug(f"複数動画モード切替: {checked}")
+        # 現在の設定を更新
+        self.settings.file.multiple_video_mode = checked
+        
+        # モード切替時にファイルリストをクリア（混乱防止）
+        if self.video_files:
+            reply = QMessageBox.question(
+                self, 
+                "モード切替", 
+                "動画アップロードモードを変更します。\n現在選択されている動画ファイルをクリアしますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.on_clear_file()
+        
+        # ドロップエリアのテキストを更新
+        if checked:
+            self.drop_area.setText("MP4ファイルをここにドラッグ＆ドロップ（複数ファイル対応）")
+        else:
+            self.drop_area.setText("MP4ファイルをここにドラッグ＆ドロップ")
+    
     def on_save_settings(self):
         """設定保存ボタンクリック時の処理"""
         try:
@@ -687,6 +742,9 @@ class MainWindow(QMainWindow):
             
             # 入力ディレクトリ
             self.settings.file.input_directory = Path(self.input_dir_edit.text())
+            
+            # 複数動画モード設定
+            self.settings.file.multiple_video_mode = self.multiple_video_check.isChecked()
             
             # BOM設定
             self.settings.file.use_bom = self.bom_check.isChecked()
@@ -738,9 +796,30 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "エラー", "解析プロンプトを入力してください")
             return
         
-        # 最初のファイルを使用
-        video_path = self.video_files[0]
+        # 複数動画モードの確認
+        is_multiple_mode = self.settings.file.multiple_video_mode
         
+        if is_multiple_mode and len(self.video_files) > 1:
+            # 複数動画モード: 確認ダイアログを表示
+            reply = QMessageBox.question(
+                self, 
+                "複数動画処理", 
+                f"{len(self.video_files)}個の動画ファイルを個別に処理します。\n処理を開始しますか？",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.Yes
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            
+            # 複数動画を順次処理
+            self.process_multiple_videos(prompt)
+        else:
+            # 単一動画モード: 最初のファイルを使用
+            video_path = self.video_files[0]
+            self.process_single_video(video_path, prompt)
+    
+    def process_single_video(self, video_path: str, prompt: str):
+        """単一動画を処理する"""
         # APIキー取得 - マスク文字列ではなく実際のAPIキーを使用
         api_key = self._actual_api_key
         
@@ -797,6 +876,92 @@ class MainWindow(QMainWindow):
         
         logger.info(f"解析開始: {Path(video_path).name}")
     
+    def process_multiple_videos(self, prompt: str):
+        """複数動画を順次処理する"""
+        # 複数動画処理用の変数を初期化
+        self._current_video_index = 0
+        self._processing_prompt = prompt
+        self._total_videos = len(self.video_files)
+        self._processed_files = []
+        
+        # プロンプトを設定に保存
+        self.settings.ui.last_prompt = prompt
+        if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+            self.settings.ui.custom_prompt = prompt
+        
+        # 結果テキストとMarkdownバッファをクリア
+        self.result_text.clear()
+        self._md_buffer = ""
+        
+        # UI状態更新
+        self.set_processing_state(True)
+        
+        # 最初の動画から処理開始
+        self._process_next_video()
+    
+    def _process_next_video(self):
+        """次の動画を処理する（複数動画モード用）"""
+        if self._current_video_index >= self._total_videos:
+            # 全ての動画処理完了
+            self._on_multiple_videos_complete()
+            return
+        
+        video_path = self.video_files[self._current_video_index]
+        
+        # APIキー取得
+        api_key = self._actual_api_key
+        model_name = self.model_combo.currentText()
+        mode = self.mode_combo.currentData()
+        streaming = self.streaming_check.isChecked()
+        output_dir = Path(self.output_dir_edit.text())
+        use_bom = self.bom_check.isChecked()
+        
+        try:
+            max_file_size = int(self.file_size_edit.text())
+        except ValueError:
+            max_file_size = self.settings.file.max_file_size_mb
+        
+        # 進捗表示を更新
+        self.status_label.setText(f"動画 {self._current_video_index + 1}/{self._total_videos} を処理中: {Path(video_path).name}")
+        
+        # ワーカー設定
+        self.worker.configure(
+            video_path=video_path,
+            prompt=self._processing_prompt,
+            api_key=api_key,
+            model_name=model_name,
+            mode=mode,
+            streaming=streaming,
+            output_dir=output_dir,
+            use_bom=use_bom,
+            max_file_size_mb=max_file_size
+        )
+        
+        # ワーカー開始
+        self.worker.start()
+        
+        logger.info(f"複数動画処理 ({self._current_video_index + 1}/{self._total_videos}): {Path(video_path).name}")
+    
+    def _on_multiple_videos_complete(self):
+        """複数動画処理完了時の処理"""
+        self.set_processing_state(False)
+        
+        # 完了メッセージ
+        processed_count = len(self._processed_files)
+        message = f"{processed_count}個の動画の処理が完了しました。\n\n処理済みファイル:\n"
+        for output_file in self._processed_files:
+            message += f"• {Path(output_file).name}\n"
+        
+        QMessageBox.information(self, "複数動画処理完了", message)
+        
+        # 処理用変数をクリア
+        self._current_video_index = 0
+        self._processing_prompt = ""
+        self._total_videos = 0
+        self._processed_files = []
+        
+        logger.info(f"複数動画処理完了: {processed_count}個のファイルを処理")
+    
     def on_progress_update(self, value: int):
         """進捗更新時の処理"""
         self.progress_bar.setValue(value)
@@ -833,41 +998,63 @@ class MainWindow(QMainWindow):
     
     def on_worker_complete(self, output_file: str):
         """処理完了時の処理"""
-        self.set_processing_state(False)
-        
-        # マークダウンコンテンツを取得
-        markdown_content = ""
-        try:
+        # 複数動画処理中かチェック
+        if hasattr(self, '_current_video_index') and hasattr(self, '_total_videos') and self._total_videos > 0:
+            # 複数動画処理モード
+            self._processed_files.append(output_file)
+            self._current_video_index += 1
+            
+            # 結果を結果テキストに追加表示
+            video_name = Path(self.video_files[self._current_video_index - 1]).name
+            separator = f"\n\n{'='*50}\n処理完了: {video_name}\n{'='*50}\n\n"
+            
             if self.streaming_check.isChecked():
-                # ストリーミングモードの場合はバッファから取得
-                markdown_content = self._md_buffer
-                logger.debug(f"ストリーミングモード: バッファから{len(markdown_content)}文字のマークダウンを取得")
+                self._md_buffer += separator
+                self.result_text.setMarkdown(self._md_buffer)
             else:
-                # 非ストリーミングモードの場合は結果テキストから取得
-                markdown_content = self.result_text.toMarkdown()
-                logger.debug(f"非ストリーミングモード: 結果テキストから{len(markdown_content)}文字のマークダウンを取得")
-        except Exception as e:
-            logger.error(f"マークダウンコンテンツの取得に失敗: {e}")
-            markdown_content = ""
-        
-        # カスタムダイアログを表示
-        dialog = CompletionDialog(self, output_file, markdown_content)
-        dialog.exec()
-        
-        # ダイアログの結果をログに記録
-        if dialog.result == "copy":
-            logger.info("ユーザーがクリップボードにコピーを選択しました")
+                current_content = self.result_text.toMarkdown()
+                updated_content = current_content + separator
+                self.result_text.setMarkdown(updated_content)
+            
+            # 次の動画を処理
+            self._process_next_video()
         else:
-            logger.info("ユーザーがOKを選択しました")
-        
-        # ログを更新
-        self.log_list.update_logs()
-        # 結果テキストを自動で開く
-        try:
-            os.startfile(output_file)
-            logger.debug(f"結果ファイルを自動オープン: {output_file}")
-        except Exception as e:
-            logger.error(f"自動オープン失敗: {e}")
+            # 単一動画処理モード
+            self.set_processing_state(False)
+            
+            # マークダウンコンテンツを取得
+            markdown_content = ""
+            try:
+                if self.streaming_check.isChecked():
+                    # ストリーミングモードの場合はバッファから取得
+                    markdown_content = self._md_buffer
+                    logger.debug(f"ストリーミングモード: バッファから{len(markdown_content)}文字のマークダウンを取得")
+                else:
+                    # 非ストリーミングモードの場合は結果テキストから取得
+                    markdown_content = self.result_text.toMarkdown()
+                    logger.debug(f"非ストリーミングモード: 結果テキストから{len(markdown_content)}文字のマークダウンを取得")
+            except Exception as e:
+                logger.error(f"マークダウンコンテンツの取得に失敗: {e}")
+                markdown_content = ""
+            
+            # カスタムダイアログを表示
+            dialog = CompletionDialog(self, output_file, markdown_content)
+            dialog.exec()
+            
+            # ダイアログの結果をログに記録
+            if dialog.result == "copy":
+                logger.info("ユーザーがクリップボードにコピーを選択しました")
+            else:
+                logger.info("ユーザーがOKを選択しました")
+            
+            # ログを更新
+            self.log_list.update_logs()
+            # 結果テキストを自動で開く
+            try:
+                os.startfile(output_file)
+                logger.debug(f"結果ファイルを自動オープン: {output_file}")
+            except Exception as e:
+                logger.error(f"自動オープン失敗: {e}")
     
     def set_processing_state(self, is_processing: bool):
         """処理中の UI 状態を設定"""

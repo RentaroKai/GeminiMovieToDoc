@@ -53,6 +53,7 @@ class FileSettings(BaseModel):
     output_directory: Path = Field(OUTPUT_DIR, description="解析結果の保存先ディレクトリ")
     use_bom: bool = Field(True, description="出力ファイルにBOMを付与するか (Windowsでの文字化け防止)")
     input_directory: Path = Field(APP_ROOT, description="ファイル選択時にデフォルトで開くフォルダ")
+    multiple_video_mode: bool = Field(False, description="複数動画モードを有効にするか（デフォルトは単一動画モード）")
     
     @validator('max_file_size_mb')
     def validate_file_size(cls, v):
