@@ -36,7 +36,7 @@ app_logger.info(f"OUTPUT_DIR set to: {OUTPUT_DIR}")
 class GeminiSettings(BaseModel):
     """Gemini API関連の設定"""
     api_key: Optional[str] = Field(None, description="Gemini APIキー")
-    model_name: str = Field("gemini-2.5-flash-preview-05-20", description="使用するGeminiモデル名")
+    model_name: str = Field("gemini-2.5-flash", description="使用するGeminiモデル名")
     mode: Literal["generate_content", "stream_generate_content"] = Field("generate_content", description="API連携モード")
     stream_response: bool = Field(False, description="ストリーミングレスポンスを使用するか")
 

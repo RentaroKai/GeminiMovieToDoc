@@ -96,25 +96,43 @@ class GeminiClient:
             logger.warning("利用可能なモデルが取得できないため、モデル名検証をスキップします")
             return
         
-        # モデル名が完全一致または部分一致するかチェック
-        model_found = False
+        logger.info(f"モデル名検証開始: 指定モデル='{self.model_name}'")
+        logger.info(f"利用可能なモデル一覧 ({len(self.available_models)}):")
+        for i, model in enumerate(self.available_models, 1):
+            logger.info(f"  {i}. {model}")
         
-        # 完全一致
+        # 1. 完全一致を最優先でチェック
         if self.model_name in self.available_models:
-            model_found = True
+            logger.info(f"完全一致モデルが見つかりました: '{self.model_name}'")
+            return  # 完全一致が見つかった場合、そのまま使用
         
-        # 部分一致（モデル名に含まれるか）
-        if not model_found:
-            for model in self.available_models:
-                if self.model_name in model:
-                    self.model_name = model
-                    model_found = True
-                    logger.info(f"モデル名を修正: {self.model_name}")
-                    break
+        # 2. 完全一致が見つからない場合のみ部分一致をチェック
+        logger.info(f"完全一致モデルが見つからないため、部分一致を検索します")
+        partial_matches = []
+        for model in self.available_models:
+            if self.model_name in model:
+                partial_matches.append(model)
         
-        if not model_found:
-            logger.warning(f"指定されたモデル '{self.model_name}' が見つかりません。デフォルトモデルを使用します。")
+        if partial_matches:
+            # 部分一致が複数ある場合、全てログに出力
+            logger.info(f"部分一致モデルが見つかりました ({len(partial_matches)}):")
+            for i, match in enumerate(partial_matches, 1):
+                logger.info(f"  {i}. {match}")
+            
+            # 最初の部分一致を使用（将来的にはより良い選択ロジックを実装可能）
+            original_model = self.model_name
+            self.model_name = partial_matches[0]
+            logger.warning(f"モデル名を部分一致で修正: '{original_model}' -> '{self.model_name}'")
+            return
+        
+        # 3. 完全一致も部分一致も見つからない場合
+        logger.error(f"指定されたモデル '{self.model_name}' に一致するモデルが見つかりません")
+        if self.available_models:
+            original_model = self.model_name
             self.model_name = self.available_models[0]
+            logger.warning(f"デフォルトモデルを使用: '{original_model}' -> '{self.model_name}'")
+        else:
+            logger.error("利用可能なモデルが存在しません")
     
     def upload_file(self, file_path: Union[str, Path]) -> Optional[Dict[str, Any]]:
         """
@@ -447,7 +465,7 @@ if __name__ == "__main__":
     # コマンドライン引数でファイルパスとモデル名を受け取る
     if len(sys.argv) >= 2:
         test_file = sys.argv[1]
-        model_name = sys.argv[2] if len(sys.argv) >= 3 else "gemini-1.5-pro-latest"
+        model_name = sys.argv[2] if len(sys.argv) >= 3 else "gemini-2.5-pro"
         
         print(f"テスト設定:")
         print(f"- ファイル: {test_file}")
