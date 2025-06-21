@@ -101,12 +101,33 @@ class GeminiClient:
         for i, model in enumerate(self.available_models, 1):
             logger.info(f"  {i}. {model}")
         
-        # 1. 完全一致を最優先でチェック
+        # 1. 完全一致を最優先でチェック（そのまま）
         if self.model_name in self.available_models:
             logger.info(f"完全一致モデルが見つかりました: '{self.model_name}'")
             return  # 完全一致が見つかった場合、そのまま使用
         
-        # 2. 完全一致が見つからない場合のみ部分一致をチェック
+        # 2. models/接頭辞付きでの完全一致をチェック
+        prefixed_model = f"models/{self.model_name}" if not self.model_name.startswith("models/") else self.model_name
+        if prefixed_model in self.available_models:
+            original_model = self.model_name
+            self.model_name = prefixed_model
+            logger.info(f"接頭辞付き完全一致モデルが見つかりました: '{original_model}' -> '{self.model_name}'")
+            return
+        
+        # 3. 接頭辞を外した正規化での完全一致をチェック
+        normalized_available = {}
+        for model in self.available_models:
+            normalized_name = model.replace("models/", "") if model.startswith("models/") else model
+            normalized_available[normalized_name] = model
+        
+        normalized_input = self.model_name.replace("models/", "") if self.model_name.startswith("models/") else self.model_name
+        if normalized_input in normalized_available:
+            original_model = self.model_name
+            self.model_name = normalized_available[normalized_input]
+            logger.info(f"正規化完全一致モデルが見つかりました: '{original_model}' -> '{self.model_name}'")
+            return
+        
+        # 4. 完全一致が見つからない場合のみ部分一致をチェック
         logger.info(f"完全一致モデルが見つからないため、部分一致を検索します")
         partial_matches = []
         for model in self.available_models:
@@ -125,7 +146,7 @@ class GeminiClient:
             logger.warning(f"モデル名を部分一致で修正: '{original_model}' -> '{self.model_name}'")
             return
         
-        # 3. 完全一致も部分一致も見つからない場合
+        # 5. 完全一致も部分一致も見つからない場合
         logger.error(f"指定されたモデル '{self.model_name}' に一致するモデルが見つかりません")
         if self.available_models:
             original_model = self.model_name
