@@ -24,6 +24,7 @@ from src.utils.file_ops import is_valid_mp4, check_file_size
 from src.config.models_loader import load_models, get_model_names, get_default_model
 from src.config.settings import settings, load_settings, save_settings
 from src.backend.worker import GeminiWorker
+from src.config.prompts import get_prompt_template
 
 
 class DropArea(QLabel):
@@ -332,10 +333,12 @@ class MainWindow(QMainWindow):
         prompt_toolbar.addWidget(QLabel("テンプレート:"))
         self.template_combo = QComboBox()
         self.template_combo.addItem("①議事録作成")
-        self.template_combo.addItem("②カスタムプロンプト")
-        self.template_combo.addItem("③汎用動画解析")
-        self.template_combo.addItem("④シーン検出と詳細説明")
-        self.template_combo.addItem("⑤技術的な解析")
+        self.template_combo.addItem("②議事録(アクションアイテム)")
+        self.template_combo.addItem("③議事録(有益情報まとめ)")
+        self.template_combo.addItem("④カスタムプロンプト")
+        self.template_combo.addItem("⑤汎用動画解析")
+        self.template_combo.addItem("⑥シーン検出と詳細説明")
+        self.template_combo.addItem("⑦技術的な解析")
         self.template_combo.currentIndexChanged.connect(self.on_template_selected)
         prompt_toolbar.addWidget(self.template_combo)
         
@@ -620,46 +623,16 @@ class MainWindow(QMainWindow):
     
     def on_template_selected(self, index: int):
         """テンプレートが選択されたときの処理"""
-        # ログ追加: 選択されたインデックスとテキストを確認
-        logger.debug(f"Template selected - index: {index}, text: {self.template_combo.itemText(index)}")
-        
-        # まずデフォルトのプレースホルダーに戻す
+
+        # 選択情報をログに残す
+        logger.debug(
+            f"Template selected - index: {index}, text: {self.template_combo.itemText(index)}"
+        )
+
+        # デフォルトのプレースホルダーを復元
         self.prompt_edit.setPlaceholderText(self._default_placeholder)
-        
-        if index == 0: # ①議事録作成
-            meeting_minutes_prompt = """\
-あなたは優秀な議事録作成者です。以下の会話データから、正確で簡潔な議事録をマークダウン形式で作成してください。
 
-作成時の重要なポイント：
-1. 形式的な要素
-- 箇条書きを適切に使用し、議題ごとに整理
-- 以下の3セクションで構成：
-  - 議題と議論内容
-  - 決定事項
-  - アクションアイテム
-
-2. 内容面での注意点
-- 重要な議論のポイントを簡潔に記載
-- 担当者が決まった事項は、担当者名を明確に記載
-- 曖昧な表現は避け、具体的な表現に変換
-
-3. 出力形式
-## 議題と議論内容
-- 各議題の要点を箇条書きで記載
-
-## 決定事項
-- 会議で合意された内容を箇条書きで記載
-- 決定に至った理由や背景も簡潔に記載（必要な場合）
-
-## アクションアイテム
-- タスク内容
-- 担当者
-- 期限（設定されている場合）
-
-不明確な情報は「**要確認**」と太字で明記してください。
-"""
-            self.prompt_edit.setText(meeting_minutes_prompt)
-        elif index == 1: # ②カスタムプロンプト
+        if index == 3:  # ④カスタムプロンプト
             # 保存されているカスタムプロンプトを読み込む
             custom_prompt = self.settings.ui.custom_prompt
             if custom_prompt:
@@ -668,15 +641,12 @@ class MainWindow(QMainWindow):
                 # 空の場合はクリアし、専用のプレースホルダーを設定
                 self.prompt_edit.clear()
                 self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
-        else:
-            # インデックス 2 以降のテンプレート
-            templates = {
-                2: "この動画の内容を詳しく解析してください。映像に何が映っているか、重要なシーンや出来事、登場人物、話の流れなどを説明してください。動画の主要なメッセージや目的も特定してください。", # ③汎用動画解析
-                3: "この動画を細かく解析し、異なるシーンごとに時間経過に沿って説明してください。各シーンで何が起こっているか、特筆すべき視覚的要素、音声要素、重要な会話や行動を詳細に記述してください。", # ④シーン検出と詳細説明
-                4: "この動画の技術的な側面を解析してください。撮影技法、カメラワーク、編集スタイル、特殊効果、照明、音響設計などについて専門的な観点から評価してください。使用されている機材や技術についても推測できる限り言及してください。" # ⑤技術的な解析
-            }
-            if index in templates:
-                self.prompt_edit.setText(templates[index])
+            return
+
+        # 外部ファイルからテンプレートを取得
+        template_text = get_prompt_template(index)
+        if template_text is not None:
+            self.prompt_edit.setText(template_text)
     
     def on_clear_prompt(self):
         """プロンプトクリアボタンクリック時の処理"""
@@ -685,9 +655,9 @@ class MainWindow(QMainWindow):
         # 保存されているカスタムプロンプトもリセット
         self.settings.ui.last_prompt = ""
         self.settings.ui.custom_prompt = ""  # カスタムプロンプトもクリア
-        # シグナルをブロックして「②カスタムプロンプト」を選択
+        # シグナルをブロックして「④カスタムプロンプト」を選択
         self.template_combo.blockSignals(True)
-        self.template_combo.setCurrentIndex(1)
+        self.template_combo.setCurrentIndex(3)
         self.template_combo.blockSignals(False)
         # カスタムプロンプト用のプレースホルダーを設定
         self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
@@ -770,7 +740,7 @@ class MainWindow(QMainWindow):
             self.settings.ui.last_prompt = self.prompt_edit.toPlainText()
             
             # カスタムプロンプトの場合、custom_promptにも保存
-            if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+            if self.template_combo.currentIndex() == 3:  # ④カスタムプロンプト
                 self.settings.ui.custom_prompt = self.prompt_edit.toPlainText()
             
             # 設定保存
@@ -868,7 +838,7 @@ class MainWindow(QMainWindow):
         self.settings.ui.last_prompt = prompt
         
         # カスタムプロンプトの場合、custom_promptにも保存
-        if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+        if self.template_combo.currentIndex() == 3:  # ④カスタムプロンプト
             self.settings.ui.custom_prompt = prompt
         
         # ワーカー開始
@@ -886,7 +856,7 @@ class MainWindow(QMainWindow):
         
         # プロンプトを設定に保存
         self.settings.ui.last_prompt = prompt
-        if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+        if self.template_combo.currentIndex() == 3:  # ④カスタムプロンプト
             self.settings.ui.custom_prompt = prompt
         
         # 結果テキストとMarkdownバッファをクリア
@@ -1094,7 +1064,7 @@ class MainWindow(QMainWindow):
             self.settings.ui.last_prompt = self.prompt_edit.toPlainText()
             
             # カスタムプロンプトの場合、custom_promptにも保存
-            if self.template_combo.currentIndex() == 1:  # ②カスタムプロンプト
+            if self.template_combo.currentIndex() == 3:  # ④カスタムプロンプト
                 self.settings.ui.custom_prompt = self.prompt_edit.toPlainText()
             
             # API関連設定 - マスク文字列ではなく実際のAPIキーを保存
