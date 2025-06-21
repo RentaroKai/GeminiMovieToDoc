@@ -261,6 +261,9 @@ class MainWindow(QMainWindow):
         
         # 起動時に「①議事録作成」を選択状態にして明示的にシグナル発火
         self.template_combo.setCurrentIndex(0)
+        # 小モードのテンプレートコンボボックスも同期
+        if hasattr(self, 'small_template_combo'):
+            self.small_template_combo.setCurrentIndex(0)
         # 明示的に議事録テンプレート選択を実行（シグナルが発火しない場合のため）
         self.on_template_selected(0)
         
@@ -624,21 +627,38 @@ class MainWindow(QMainWindow):
     def on_template_selected(self, index: int):
         """テンプレートが選択されたときの処理"""
 
-        # 選択情報をログに残す
+        # シグナル発信元を取得（None の場合は大モードのコンボボックスとみなす）
+        sender = self.sender()
+        if sender is None:
+            sender = self.template_combo
+        combo_name = "大モード" if sender == self.template_combo else "小モード"
+        # 選択情報をログに残す（sender が安全に itemText を持つ場合のみ）
+        try:
+            selected_text = sender.itemText(index)
+        except Exception:
+            selected_text = "(unknown)"
         logger.debug(
-            f"Template selected - index: {index}, text: {self.template_combo.itemText(index)}"
+            f"Template selected from {combo_name} - index: {index}, text: {selected_text}"
         )
+
+        # 大モードと小モードのコンボボックスを同期
+        if sender == self.template_combo and hasattr(self, 'small_template_combo'):
+            self.small_template_combo.blockSignals(True)
+            self.small_template_combo.setCurrentIndex(index)
+            self.small_template_combo.blockSignals(False)
+        elif sender == getattr(self, 'small_template_combo', None) and hasattr(self, 'template_combo'):
+            self.template_combo.blockSignals(True)
+            self.template_combo.setCurrentIndex(index)
+            self.template_combo.blockSignals(False)
 
         # デフォルトのプレースホルダーを復元
         self.prompt_edit.setPlaceholderText(self._default_placeholder)
 
         if index == 3:  # ④カスタムプロンプト
-            # 保存されているカスタムプロンプトを読み込む
             custom_prompt = self.settings.ui.custom_prompt
             if custom_prompt:
                 self.prompt_edit.setText(custom_prompt)
             else:
-                # 空の場合はクリアし、専用のプレースホルダーを設定
                 self.prompt_edit.clear()
                 self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
             return
@@ -659,6 +679,11 @@ class MainWindow(QMainWindow):
         self.template_combo.blockSignals(True)
         self.template_combo.setCurrentIndex(3)
         self.template_combo.blockSignals(False)
+        # 小モードのコンボボックスも同期
+        if hasattr(self, 'small_template_combo'):
+            self.small_template_combo.blockSignals(True)
+            self.small_template_combo.setCurrentIndex(3)
+            self.small_template_combo.blockSignals(False)
         # カスタムプロンプト用のプレースホルダーを設定
         self.prompt_edit.setPlaceholderText("カスタムプロンプトを入力してください")
     
@@ -1089,13 +1114,31 @@ class MainWindow(QMainWindow):
         # 外枠のみスタイル適用するためobjectNameを設定
         self.small_frame.setObjectName("smallFrame")
         layout = QHBoxLayout(self.small_frame)
+        
         # ファイル選択ボタン
         self.small_select_file_btn = QPushButton("ファイル選択...")
         self.small_select_file_btn.clicked.connect(self.on_select_file)
         layout.addWidget(self.small_select_file_btn)
+        
         # 選択ファイル名表示用ラベル
         self.small_file_label = QLabel("ファイル: 未選択")
         layout.addWidget(self.small_file_label)
+        
+        # プロンプトテンプレート選択コンボボックス（小モード用）
+        self.small_template_combo = QComboBox()
+        self.small_template_combo.addItem("①議事録作成")
+        self.small_template_combo.addItem("②議事録(アクションアイテム)")
+        self.small_template_combo.addItem("③議事録(有益情報まとめ)")
+        self.small_template_combo.addItem("④カスタムプロンプト")
+        self.small_template_combo.addItem("⑤汎用動画解析")
+        self.small_template_combo.addItem("⑥シーン検出と詳細説明")
+        self.small_template_combo.addItem("⑦技術的な解析")
+        # 大モードのテンプレートコンボと連動させる
+        self.small_template_combo.currentIndexChanged.connect(self.on_template_selected)
+        # 初期値を大モードと同期
+        self.small_template_combo.setCurrentIndex(0)
+        layout.addWidget(self.small_template_combo)
+        
         # 動画解析ボタン
         self.small_analyze_btn = QPushButton("動画を解析")
         self.small_analyze_btn.clicked.connect(self.on_analyze)
@@ -1117,9 +1160,11 @@ class MainWindow(QMainWindow):
             }
         """)
         layout.addWidget(self.small_analyze_btn)
+        
         # 小モード用ステータスラベルを追加
         self.small_status_label = QLabel("準備完了")
         layout.addWidget(self.small_status_label)
+        
         # 詳細（大モード）に展開する矢印ボタン
         layout.addStretch()
         self.expand_button = QToolButton()
@@ -1136,12 +1181,22 @@ class MainWindow(QMainWindow):
             self.large_frame.show()
             # 大モード用のデフォルトサイズ
             self.resize(1000, 700)
+            # 小モードのプロンプトテンプレート選択を大モードに同期
+            if hasattr(self, 'small_template_combo') and hasattr(self, 'template_combo'):
+                self.template_combo.blockSignals(True)
+                self.template_combo.setCurrentIndex(self.small_template_combo.currentIndex())
+                self.template_combo.blockSignals(False)
         else:
             # 大モード→小モード
             self.large_frame.hide()
             self.small_frame.show()
             # 小モードに合わせて自動調整
             self.adjustSize()
+            # 大モードのプロンプトテンプレート選択を小モードに同期
+            if hasattr(self, 'template_combo') and hasattr(self, 'small_template_combo'):
+                self.small_template_combo.blockSignals(True)
+                self.small_template_combo.setCurrentIndex(self.template_combo.currentIndex())
+                self.small_template_combo.blockSignals(False)
         self._is_small_mode = not self._is_small_mode
         logger.debug(f"表示モード切替: {'小モード' if self._is_small_mode else '大モード'}")
 
