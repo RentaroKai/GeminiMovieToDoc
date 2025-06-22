@@ -12,6 +12,7 @@ import time
 import random
 from pathlib import Path
 from typing import Optional, Union, List, Dict, Any, Callable, Generator, AsyncGenerator
+import re  # 局所インポートで依存範囲を最小化
 
 import google.genai as genai
 from google.genai import types
@@ -25,11 +26,6 @@ INITIAL_RETRY_DELAY = 1.0  # 秒
 MAX_RETRY_DELAY = 10.0  # 秒
 
 # ファイル処理待機ロジック
-#   1回目:  1 分 (60 秒)
-#   2回目:  3 分 (180 秒)
-#   3回目:  5 分 (300 秒)
-#   4回目: 10 分 (600 秒)
-#   5回目以降: 15 分 (900 秒) ※上限
 
 # 上記の要件を反映した待機スケジュールを定義
 FILE_WAIT_RETRY_SCHEDULE: list[int] = [
@@ -118,7 +114,50 @@ class GeminiClient:
         logger.info(f"利用可能なモデル一覧 ({len(self.available_models)}):")
         for i, model in enumerate(self.available_models, 1):
             logger.info(f"  {i}. {model}")
-        
+
+        # -------------------------
+        # 追加: Gemini 2.5 Pro 系列の特別ロジック
+        #   ・preview があれば preview を優先 (exp は除外)
+        #   ・preview が複数あれば日付の新しいものを使用
+        #   ・preview が無ければ通常版 (exp 以外) を使用
+        # -------------------------
+        normalized_input = (
+            self.model_name.replace("models/", "")
+            if self.model_name.startswith("models/")
+            else self.model_name
+        )
+        base_pro_name = "gemini-2.5-pro"
+
+        if normalized_input.startswith(base_pro_name):
+            # 利用可能モデルの中から対象候補を抽出
+            candidate_models = [m for m in self.available_models if base_pro_name in m and "-exp-" not in m]
+
+            def _model_sort_key(model_name: str):
+                """preview 優先 + 日付新しい順のソートキーを返す"""
+                # preview の有無で優先度を決定 (preview:0, それ以外:1)
+                preview_flag = 0 if "-preview-" in model_name else 1
+                # preview-YY-MM などの末尾日付を抽出 (見つからなければ 0,0)
+                m = re.search(r"preview-(\d{2})-(\d{2})$", model_name)
+                if m:
+                    # 並び替えで日付が新しいものを先にしたいのでマイナス値
+                    month = -int(m.group(1))
+                    day = -int(m.group(2))
+                else:
+                    month, day = 0, 0
+                return (preview_flag, month, day)
+
+            if candidate_models:
+                # 最適なモデルを選択
+                best_model = sorted(candidate_models, key=_model_sort_key)[0]
+                if best_model != self.model_name:
+                    original_model = self.model_name
+                    self.model_name = best_model
+                    logger.info(
+                        f"Gemini 2.5 Pro 系列の優先ロジックによりモデルを選択: '{original_model}' -> '{self.model_name}'"
+                    )
+                return  # 特別ロジックで決定したのでここで終了
+        # ------------------------- 追加ロジックここまで -------------------------
+
         # 1. 完全一致を最優先でチェック（そのまま）
         if self.model_name in self.available_models:
             logger.info(f"完全一致モデルが見つかりました: '{self.model_name}'")
@@ -153,14 +192,17 @@ class GeminiClient:
                 partial_matches.append(model)
         
         if partial_matches:
+            # exp を除外してプレビューおよび通常モデルを優先
+            non_exp_matches = [m for m in partial_matches if "-exp-" not in m]
+            preferred_matches = non_exp_matches if non_exp_matches else partial_matches
             # 部分一致が複数ある場合、全てログに出力
-            logger.info(f"部分一致モデルが見つかりました ({len(partial_matches)}):")
-            for i, match in enumerate(partial_matches, 1):
+            logger.info(f"部分一致モデルが見つかりました ({len(preferred_matches)}):")
+            for i, match in enumerate(preferred_matches, 1):
                 logger.info(f"  {i}. {match}")
             
             # 最初の部分一致を使用（将来的にはより良い選択ロジックを実装可能）
             original_model = self.model_name
-            self.model_name = partial_matches[0]
+            self.model_name = preferred_matches[0]
             logger.warning(f"モデル名を部分一致で修正: '{original_model}' -> '{self.model_name}'")
             return
         
@@ -271,14 +313,35 @@ class GeminiClient:
             生成されたコンテンツ (文字列またはストリームジェネレータ)
         """
         try:
-            # 生成設定
+            # 生成設定と安全設定 -----------------
+            safety_settings = [
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+            ]
+
             generation_config = types.GenerateContentConfig(
                 temperature=0.4,
                 top_p=0.95,
                 top_k=0,
                 max_output_tokens=8192,
-                stop_sequences=[]
+                stop_sequences=[],
+                safety_settings=safety_settings,
             )
+            # ------------------------------------
             
             # コンテンツの準備
             contents = []
@@ -303,7 +366,7 @@ class GeminiClient:
                         contents=contents,
                         config=generation_config
                     ),
-                    "generate_content_stream"
+                    f"generate_content_stream: {self.model_name}"
                 )
                 
                 # ストリーミングジェネレータ
@@ -346,12 +409,32 @@ class GeminiClient:
             生成されたコンテンツ (文字列またはストリームジェネレータ)
         """
         try:
-            # 生成設定
+            # 生成設定と安全設定を準備
+            safety_settings = [
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+                types.SafetySetting(
+                    category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                    threshold=types.HarmBlockThreshold.BLOCK_NONE,
+                ),
+            ]
+
             generation_config = types.GenerateContentConfig(
                 temperature=0.4,
                 top_p=0.95,
                 top_k=0,
-                max_output_tokens=8192
+                max_output_tokens=8192,
+                safety_settings=safety_settings,
             )
             
             # チャットセッション作成
@@ -376,7 +459,7 @@ class GeminiClient:
                 # ストリーミングモード
                 logger.debug(f"send_message_streamを呼び出し: プロンプト='{prompt[:50]}...'")
                 response_stream = self._retry_operation(
-                    lambda: chat.send_message_stream(contents),
+                    lambda: chat.send_message_stream(contents, generation_config=generation_config),
                     "send_message_stream"
                 )
                 
@@ -392,7 +475,7 @@ class GeminiClient:
                 # 非ストリーミングモード
                 logger.debug(f"send_messageを呼び出し: プロンプト='{prompt[:50]}...'")
                 response = self._retry_operation(
-                    lambda: chat.send_message(contents),
+                    lambda: chat.send_message(contents, generation_config=generation_config),
                     "send_message"
                 )
                 
