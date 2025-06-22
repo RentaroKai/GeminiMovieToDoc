@@ -23,7 +23,7 @@ from src.config.settings import settings
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 1.0  # 秒
 MAX_RETRY_DELAY = 10.0  # 秒
-MAX_FILE_WAIT_RETRIES = 30  # ファイル処理待機の最大リトライ回数
+MAX_FILE_WAIT_RETRIES = 120  # ファイル処理待機の最大リトライ回数
 FILE_WAIT_RETRY_DELAY = 5   # ファイル処理待機の間隔（秒）
 
 
