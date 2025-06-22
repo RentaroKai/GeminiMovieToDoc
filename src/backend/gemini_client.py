@@ -23,9 +23,27 @@ from src.config.settings import settings
 MAX_RETRIES = 3
 INITIAL_RETRY_DELAY = 1.0  # 秒
 MAX_RETRY_DELAY = 10.0  # 秒
-MAX_FILE_WAIT_RETRIES = 120  # ファイル処理待機の最大リトライ回数
-FILE_WAIT_RETRY_DELAY = 5   # ファイル処理待機の間隔（秒）
 
+# ファイル処理待機ロジック
+#   1回目:  1 分 (60 秒)
+#   2回目:  3 分 (180 秒)
+#   3回目:  5 分 (300 秒)
+#   4回目: 10 分 (600 秒)
+#   5回目以降: 15 分 (900 秒) ※上限
+
+# 上記の要件を反映した待機スケジュールを定義
+FILE_WAIT_RETRY_SCHEDULE: list[int] = [
+    60,   # 1 回目
+    180,  # 2 回目
+    300,  # 3 回目
+    600,  # 4 回目
+    900,  # 5 回目
+]
+
+# 最大リトライ回数 = スケジュール長 + 1
+# これによりスケジュールの最後 (900 秒) を待機した後、
+# もう一度状態確認して終了できる。
+MAX_FILE_WAIT_RETRIES = len(FILE_WAIT_RETRY_SCHEDULE) + 1
 
 class GeminiClient:
     """
@@ -207,13 +225,14 @@ class GeminiClient:
             bool: 処理がACTIVEになった場合はTrue、タイムアウトまたは失敗した場合はFalse
         """
         logger.info(f"ファイル処理待機開始: {file_reference.name}")
-        # 初期リトライ遅延を設定
-        retry_delay = FILE_WAIT_RETRY_DELAY
         for attempt in range(MAX_FILE_WAIT_RETRIES):
             try:
                 current_file = self.client.files.get(name=file_reference.name)
                 state = current_file.state.name
-                logger.debug(f"ファイル状態確認 ({attempt + 1}/{MAX_FILE_WAIT_RETRIES}): {file_reference.name} - {state}")
+                logger.debug(
+                    f"ファイル状態確認 ({attempt + 1}/{MAX_FILE_WAIT_RETRIES}): "
+                    f"{file_reference.name} - {state}"
+                )
                 
                 if state == "ACTIVE":
                     logger.info(f"ファイル処理完了 (ACTIVE): {file_reference.name}")
@@ -226,11 +245,14 @@ class GeminiClient:
                 logger.warning(f"ファイル状態取得エラー ({file_reference.name}): {e}")
                 # 状態取得エラーでもリトライを続ける
 
-            # 次回リトライ前に指数バックオフ + ジッターで待機
-            jitter = random.uniform(0, 0.1 * retry_delay)
-            retry_delay = min(retry_delay * 2 + jitter, MAX_RETRY_DELAY)
-            logger.debug(f"ファイル状態確認待機: {retry_delay:.2f}秒後に次の試行")
-            time.sleep(retry_delay)
+            # 最終試行でなければスケジュールに従って待機
+            if attempt < MAX_FILE_WAIT_RETRIES - 1:
+                # スケジュールに定義された待機時間を取得
+                retry_delay = FILE_WAIT_RETRY_SCHEDULE[min(attempt, len(FILE_WAIT_RETRY_SCHEDULE) - 1)]
+                logger.debug(
+                    f"ファイル状態確認待機: {retry_delay:.2f} 秒後に次の試行"
+                )
+                time.sleep(retry_delay)
             
         logger.error(f"ファイル処理待機タイムアウト: {file_reference.name} ({MAX_FILE_WAIT_RETRIES}回試行)")
         return False
